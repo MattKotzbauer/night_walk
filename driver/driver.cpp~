@@ -1,0 +1,11 @@
+#include <windows.h>
+#include <GLFW/glfw3.h>
+
+int WINAPI WinMain(HINSTANCE Instance,
+		   HINSTANCE PrevInstance,
+		   PSTR CommandLine,
+		   int ShowCode)
+{
+  OutputDebugStringA("foo");
+  return 0;
+}

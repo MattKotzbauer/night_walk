@@ -1,0 +1,24 @@
+# (Auxiliary build files)
+build/*
+!build/*.exe
+
+
+# (Intermediate files / directories)
+*.ilk
+*.obj
+*.pdb
+*.log
+*.tlog
+*.lastbuildstate
+*.idb
+*.suo
+*.user
+
+# (VS-specific directories)
+.vs/
+
+# (Other build artifacts)
+*.lib
+*.dll
+*.o
+
