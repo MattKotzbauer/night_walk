@@ -6,10 +6,33 @@
 #define global static
 #define internal static
 
+typedef uint32_t uint32;
+typedef uint64_t uint64;
 typedef int32_t int32;
 typedef int64_t int64;
 typedef float real32;
 typedef double real64;
+
+global int32 GlobalWidth = 800;
+global int32 GlobalHeight = 600;
+
+const global char* VertexShaderSource = R"(
+#version 330 core
+layout (location = 0) in vec3 aPos;
+void main()
+{
+   gl_Position = vec4(aPos.x, aPos.y, aPos.z, 1.0);
+}
+)";
+
+const global char* FragmentShaderSource = R"(
+#version 330 core
+out vec4 FragColor;
+void main()
+{
+   FragColor = vec4(1.0f, 0.5f, 0.2f, 1.0f);
+}
+)";
 
 // INCLUDES / GLOBALS END
 
@@ -27,8 +50,10 @@ internal void ProcessInput(GLFWwindow* Window){
 
 // MAIN START
 int main(){
-  glfwInit();
 
+  // GLFW: Initialize and configure
+  // -------------------------
+  glfwInit();
   // (Specify OpenGL 3)
   glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
   // (Specify OpenGL 3.3)
@@ -36,30 +61,77 @@ int main(){
   // (Specify OpenGL Core)
   glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
 
-  // (Create window + OpenGL context)
-  GLFWwindow* Window = glfwCreateWindow(800, 600, "BaseWindow", NULL, NULL);
+ 
+  // GLFW Window Creation
+  // -------------------------
+  GLFWwindow* Window = glfwCreateWindow(GlobalWidth, GlobalHeight, "BaseWindow", NULL, NULL);
   if(!Window){
     OutputDebugStringA("Window creation failed");
     glfwTerminate();
     return -1;
   }
-
   // (Makes window's current context - required before OpenGL function calls)
   glfwMakeContextCurrent(Window);
   // (Sets ResizeWindow as window resize callback fn) 
   glfwSetFramebufferSizeCallback(Window, ResizeWindow);
 
-  // (Initialize GLAD: loads OpenGL function pointers)
+  // (Init. GLAD: loads OpenGL function pointers)
   if (!gladLoadGLLoader((GLADloadproc)glfwGetProcAddress))
     {
       OutputDebugStringA("Failed to initialize GLAD");
       return -1;
     }     
 
-  // (Sets OpenGL viewport dimensions)
-  glViewport(0, 0, 800, 600);
 
-  // Main render loop: 
+  // Shader Building / Compilation
+  // -------------------------
+  // Vertex Shader: 
+  uint32 VertexShader = glCreateShader(GL_VERTEX_SHADER);
+  glShaderSource(VertexShader, 1, &VertexShaderSource, NULL);
+  glCompileShader(VertexShader);
+  // TODO: use glgetShaderiv / glGetShaderInfoLog to check for success
+  // Fragment Shader:
+  uint32 FragmentShader = glCreateShader(GL_FRAGMENT_SHADER);
+  glShaderSource(FragmentShader, 1, &FragmentShaderSource, NULL);
+  glCompileShader(FragmentShader);
+  // TODO: use glgetShaderiv / glGetShaderInfoLog to check for success
+  // Linking Shaders:
+  uint32 ShaderProgram = glCreateProgram();
+  glAttachShader(ShaderProgram, VertexShader);
+  glAttachShader(ShaderProgram, FragmentShader);
+  glLinkProgram(ShaderProgram);
+  // TODO: check for linking errors
+  glDeleteShader(VertexShader);
+  glDeleteShader(FragmentShader);
+
+
+  // Setting Up Vertex Data and Buffers
+  // -------------------------
+  // (Init. triangle to render)
+  real32 TriangleVertices[] = {
+    -0.5f, -0.5f, 0.0f,
+    0.5f, -0.5f, 0.0f,
+    0.0f,  0.5f, 0.0f
+  };
+  
+  // (Init. ID's for vertex array object, vertex buffer object)
+  uint32 VAO, VBO;
+  // (Create buffer object and place ID in VBO)
+  glGenVertexArrays(1, &VAO);
+  glGenBuffers(1, &VBO);
+
+  // (Bind Vertex Objects)
+  glBindVertexArray(VAO);
+  glBindBuffer(GL_ARRAY_BUFFER, VBO);
+  // (Populate currently-bound vertex buffer object with content of TriangleVertices)
+  glBufferData(GL_ARRAY_BUFFER, sizeof(TriangleVertices), TriangleVertices, GL_STATIC_DRAW);
+  // (Set our vertex attribute pointers)
+  glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), (void*)0);
+  glEnableVertexAttribArray(0);  
+  
+  
+  // Main Render Loop
+  // -------------------------
   while (!glfwWindowShouldClose(Window)){
     
     ProcessInput(Window);
@@ -69,13 +141,19 @@ int main(){
     // (Clears buffer)
     glClear(GL_COLOR_BUFFER_BIT);
 
+    // Draw Triangle
+    glUseProgram(ShaderProgram);
+    glBindVertexArray(VAO);
+    glDrawArrays(GL_TRIANGLES, 0, 3);
+
+    
     // (Swap front and back buffers)
     glfwSwapBuffers(Window);
     // (Check for pending events (keyboard, mouse, window)
     glfwPollEvents();
     
 
-    // (Main render loop end)
+    // (Main Render Loop End)
   }
  
   return 0;
