@@ -1,5 +1,6 @@
 // INCLUDES / GLOBALS START
 #include <windows.h>
+#include <math.h>
 #include <glad/glad.h>
 #include <GLFW/glfw3.h>
 
@@ -18,19 +19,29 @@ global int32 GlobalHeight = 600;
 
 const global char* VertexShaderSource = R"(
 #version 330 core
+
 layout (location = 0) in vec3 aPos;
+layout (location = 1) in vec3 aColor;
+
+out vec3 OurColor;
+
 void main()
 {
-   gl_Position = vec4(aPos.x, aPos.y, aPos.z, 1.0);
+   gl_Position = vec4(aPos.xyz, 1.0);
+   OurColor = aColor.xyz;
 }
 )";
 
 const global char* FragmentShaderSource = R"(
 #version 330 core
+
+in vec3 OurColor;
+
 out vec4 FragColor;
+
 void main()
 {
-   FragColor = vec4(1.0f, 0.5f, 0.2f, 1.0f);
+   FragColor = vec4(OurColor.xyz, 1.0);
 }
 )";
 
@@ -109,10 +120,19 @@ int main(){
   // -------------------------
   // (Init. triangle to render)
   real32 TriangleVertices[] = {
+  // positions         // colors
+    0.5f, -0.5f, 0.0f,  1.0f, 0.0f, 0.0f,   // bottom right
+    -0.5f, -0.5f, 0.0f,  0.0f, 1.0f, 0.0f,   // bottom left
+    0.0f,  0.5f, 0.0f,  0.0f, 0.0f, 1.0f    // top 
+  };
+  
+  /* 
+  real32 TriangleVertices[] = {
     -0.5f, -0.5f, 0.0f,
     0.5f, -0.5f, 0.0f,
     0.0f,  0.5f, 0.0f
   };
+  */
   
   // (Init. ID's for vertex array object, vertex buffer object)
   uint32 VAO, VBO;
@@ -125,9 +145,13 @@ int main(){
   glBindBuffer(GL_ARRAY_BUFFER, VBO);
   // (Populate currently-bound vertex buffer object with content of TriangleVertices)
   glBufferData(GL_ARRAY_BUFFER, sizeof(TriangleVertices), TriangleVertices, GL_STATIC_DRAW);
-  // (Set our vertex attribute pointers)
-  glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), (void*)0);
+  // (Position attribute)
+  glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 6 * sizeof(real32), (void*)0);
   glEnableVertexAttribArray(0);  
+  // (Color attribute)
+  glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 6 * sizeof(real32), (void*)(3 * sizeof(real32)));
+  glEnableVertexAttribArray(1);
+  
   
   
   // Main Render Loop
@@ -142,14 +166,13 @@ int main(){
     glClear(GL_COLOR_BUFFER_BIT);
 
     // Draw Triangle
-    glUseProgram(ShaderProgram);
+    glUseProgram(ShaderProgram);    
     glBindVertexArray(VAO);
     glDrawArrays(GL_TRIANGLES, 0, 3);
-
     
     // (Swap front and back buffers)
     glfwSwapBuffers(Window);
-    // (Check for pending events (keyboard, mouse, window)
+    // (Check for pending IO events (keyboard, mouse, window))
     glfwPollEvents();
     
 
