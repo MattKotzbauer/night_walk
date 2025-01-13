@@ -1,5 +1,6 @@
 // INCLUDES / GLOBALS START
 #include <windows.h>
+#include <stdint.h> // (included by default with GLAD)
 #include <math.h>
 #include <glad/glad.h>
 #include <GLFW/glfw3.h>
@@ -14,36 +15,10 @@ typedef int64_t int64;
 typedef float real32;
 typedef double real64;
 
+#include "shader.h"
+
 global int32 GlobalWidth = 800;
 global int32 GlobalHeight = 600;
-
-const global char* VertexShaderSource = R"(
-#version 330 core
-
-layout (location = 0) in vec3 aPos;
-layout (location = 1) in vec3 aColor;
-
-out vec3 OurColor;
-
-void main()
-{
-   gl_Position = vec4(aPos.xyz, 1.0);
-   OurColor = aColor.xyz;
-}
-)";
-
-const global char* FragmentShaderSource = R"(
-#version 330 core
-
-in vec3 OurColor;
-
-out vec4 FragColor;
-
-void main()
-{
-   FragColor = vec4(OurColor.xyz, 1.0);
-}
-)";
 
 // INCLUDES / GLOBALS END
 
@@ -57,11 +32,8 @@ internal void ProcessInput(GLFWwindow* Window){
     glfwSetWindowShouldClose(Window, true); 
   }
 }
-// HELPERS END
 
-// MAIN START
-int main(){
-
+internal GLFWwindow* GLFWFullInit(){
   // GLFW: Initialize and configure
   // -------------------------
   glfwInit();
@@ -70,8 +42,7 @@ int main(){
   // (Specify OpenGL 3.3)
   glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
   // (Specify OpenGL Core)
-  glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
-
+  glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);  
  
   // GLFW Window Creation
   // -------------------------
@@ -79,44 +50,39 @@ int main(){
   if(!Window){
     OutputDebugStringA("Window creation failed");
     glfwTerminate();
-    return -1;
+    return 0;
   }
   // (Makes window's current context - required before OpenGL function calls)
   glfwMakeContextCurrent(Window);
   // (Sets ResizeWindow as window resize callback fn) 
   glfwSetFramebufferSizeCallback(Window, ResizeWindow);
-
+    
   // (Init. GLAD: loads OpenGL function pointers)
   if (!gladLoadGLLoader((GLADloadproc)glfwGetProcAddress))
     {
       OutputDebugStringA("Failed to initialize GLAD");
-      return -1;
+      return 0;
     }     
+  
+  return Window;
+  
+}
 
+// HELPERS END
 
-  // Shader Building / Compilation
+// MAIN START
+int main(){
+
+  // GLFW + Window + Shader Init.
   // -------------------------
-  // Vertex Shader: 
-  uint32 VertexShader = glCreateShader(GL_VERTEX_SHADER);
-  glShaderSource(VertexShader, 1, &VertexShaderSource, NULL);
-  glCompileShader(VertexShader);
-  // TODO: use glgetShaderiv / glGetShaderInfoLog to check for success
-  // Fragment Shader:
-  uint32 FragmentShader = glCreateShader(GL_FRAGMENT_SHADER);
-  glShaderSource(FragmentShader, 1, &FragmentShaderSource, NULL);
-  glCompileShader(FragmentShader);
-  // TODO: use glgetShaderiv / glGetShaderInfoLog to check for success
-  // Linking Shaders:
-  uint32 ShaderProgram = glCreateProgram();
-  glAttachShader(ShaderProgram, VertexShader);
-  glAttachShader(ShaderProgram, FragmentShader);
-  glLinkProgram(ShaderProgram);
-  // TODO: check for linking errors
-  glDeleteShader(VertexShader);
-  glDeleteShader(FragmentShader);
-
-
-  // Setting Up Vertex Data and Buffers
+  // GLFW init + Window declaration
+  GLFWwindow* Window = GLFWFullInit();
+  if(!Window){return -1;}
+  // Shader loading
+  // Shader ShaderProgram("shader.vert", "shader.frag");
+  Shader ShaderProgram("../driver/shader.vert", "../driver/shader.frag");
+  
+  // Setting Up Vertex Data 
   // -------------------------
   // (Init. triangle to render)
   real32 TriangleVertices[] = {
@@ -125,14 +91,6 @@ int main(){
     -0.5f, -0.5f, 0.0f,  0.0f, 1.0f, 0.0f,   // bottom left
     0.0f,  0.5f, 0.0f,  0.0f, 0.0f, 1.0f    // top 
   };
-  
-  /* 
-  real32 TriangleVertices[] = {
-    -0.5f, -0.5f, 0.0f,
-    0.5f, -0.5f, 0.0f,
-    0.0f,  0.5f, 0.0f
-  };
-  */
   
   // (Init. ID's for vertex array object, vertex buffer object)
   uint32 VAO, VBO;
@@ -166,7 +124,7 @@ int main(){
     glClear(GL_COLOR_BUFFER_BIT);
 
     // Draw Triangle
-    glUseProgram(ShaderProgram);    
+    ShaderProgram.Use();
     glBindVertexArray(VAO);
     glDrawArrays(GL_TRIANGLES, 0, 3);
     
@@ -178,7 +136,15 @@ int main(){
 
     // (Main Render Loop End)
   }
- 
+
+  
+  // TODO: Debug Cleanup Impact on Performance, Potentially Delete
+  // Cleanup
+  // -------------------------
+  glDeleteVertexArrays(1, &VAO);
+  glDeleteBuffers(1, &VBO);
+  glfwTerminate();
+
   return 0;
 }
 // MAIN END

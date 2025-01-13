@@ -1,0 +1,8 @@
+#if !defined(SHADER_H)
+
+struct Shader{
+  uint32 ID;
+}; 
+
+#define SHADER_H
+#endif
