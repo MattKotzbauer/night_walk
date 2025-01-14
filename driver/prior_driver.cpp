@@ -46,7 +46,7 @@ internal GLFWwindow* GLFWFullInit(){
  
   // GLFW Window Creation
   // -------------------------
-  GLFWwindow* Window = glfwCreateWindow(GlobalWidth, GlobalHeight, "BaseWindow", NULL, NULL);
+   GLFWwindow* Window = glfwCreateWindow(GlobalWidth, GlobalHeight, "BaseWindow", NULL, NULL);
   if(!Window){
     OutputDebugStringA("Window creation failed");
     glfwTerminate();
