@@ -227,7 +227,7 @@ internal void Win64InitOpenGL(HWND Window, HDC WindowDC){
   PIXELFORMATDESCRIPTOR DesiredPixelFormat = {};
   DesiredPixelFormat.nSize = sizeof(DesiredPixelFormat);
   DesiredPixelFormat.nVersion = 1;
-  DesiredPixelFormat.dwFlags = PFD_SUPPORT_OPENGL|PFD_DRAW_TO_WINDOW;
+  DesiredPixelFormat.dwFlags = PFD_SUPPORT_OPENGL|PFD_DRAW_TO_WINDOW|PFD_DOUBLEBUFFER; // (remove doublebuffer?)
   DesiredPixelFormat.cColorBits = 32;
   DesiredPixelFormat.cAlphaBits = 8;
   DesiredPixelFormat.iLayerType = PFD_MAIN_PLANE;
@@ -249,16 +249,34 @@ internal void Win64InitOpenGL(HWND Window, HDC WindowDC){
     }
   }
   else{OutputDebugStringA("ERROR::OpenGL Initialization");}
+
+  // (Print OpenGL version, vendor info)
+  const GLubyte* version = glGetString(GL_VERSION);
+  const GLubyte* vendor = glGetString(GL_VENDOR);
+  char debugInfo[256];
+  sprintf(debugInfo, "OpenGL Version: %s\nVendor: %s\n", version, vendor);
+  OutputDebugStringA(debugInfo);
   
   // ReleaseDC(Window, WindowDC);
 }
 
 internal void Win64DisplayBufferInWindow(HDC DeviceContext, int WindowWidth, int WindowHeight, win64_offscreen_buffer *Buffer){
+
   glViewport(0, 0, WindowWidth, WindowHeight);
 
   glClearColor(1.0f, 0.0f, 1.0f, 0.0f);
   glClear(GL_COLOR_BUFFER_BIT);
 
+  GLenum err;
+  while((err = glGetError()) != GL_NO_ERROR) {
+    char errorMsg[256];
+    sprintf(errorMsg, "OpenGL error: 0x%x\n", err);
+    OutputDebugStringA(errorMsg);
+  }
+  
+  SwapBuffers(DeviceContext);
+
+  
   // (Muratori's triangle blitting)
   /* 
   glMatrixMode(GL_MODELVIEW);
@@ -283,7 +301,6 @@ internal void Win64DisplayBufferInWindow(HDC DeviceContext, int WindowWidth, int
   glEnd();
   */
 
-  SwapBuffers(DeviceContext);
 
 }
 
