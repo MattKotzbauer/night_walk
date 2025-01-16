@@ -1,6 +1,7 @@
-// INCLUDES / GLOBALS START
+// INCLUDES / DEFINES
+
 #include <windows.h>
-// #include <gl.h>
+// #include <gl.h> // (legacy OpenGL header (v1.1)
 #include <stdint.h> // (included by default with GLAD)
 #include <math.h>
 #include <glad/glad.h>
@@ -11,10 +12,18 @@
 
 typedef uint32_t uint32;
 typedef uint64_t uint64;
+
 typedef int32_t int32;
 typedef int64_t int64;
+
 typedef float real32;
 typedef double real64;
+
+typedef int32_t bool32;
+
+#include "shader.h"
+
+// STRUCTS
 
 struct win32_offscreen_buffer
 {
@@ -26,22 +35,54 @@ struct win32_offscreen_buffer
   int BytesPerPixel;
 };
 
-struct game_input {
-  
+struct game_offscreen_buffer
+{
+  int Width;
+  int Height;
+  int Pitch;
+  void *Memory;
+}; 
+
+struct game_button_state {
+  // int HalfTransitionCount;
+  bool EndedDown;
+};
+
+struct game_input {  
+  union{
+    game_button_state Buttons[6];
+    struct{
+      game_button_state Up;
+      game_button_state Down;
+      game_button_state Left;
+      game_button_state Right;
+      game_button_state LeftShoulder;
+      game_button_state RightShoulder;
+    };
+  };
   
 };
 
+// (GLOBALS)
 
-#include "shader.h"
+// (Audio)
+const IID IID_IAudioClient = __uuidof(IAudioClient);
+const IID IID_IAudioRenderClient = __uuidof(IAudioRenderClient);
+global_variable IAudioClient* pAudioClientGlobal;
+global_variable IAudioRenderClient* pRenderClientGlobal;
+global_variable UINT32 bufferFrameCountGlobal;
+global_variable real32 sampleRateGlobal;
 
-/*
 
-  foo */
+global_variable bool GlobalRunning;
+global_variable win32_offscreen_buffer GlobalBackBuffer;
 
-internal
-void Win32InitOpenGL(
 
-		     HWND Window){
+// HELPER FUNCTIONS
+
+internal void Win32InitOpenGL(HWND Window){
+
+  HDC WindowDC = GetDC(Window);
   
   PIXELFORMATDESCRIPTOR DesiredPixelFormat = {};
   DesiredPixelFormat.nSize = sizeof(DesiredPixelFormat);
@@ -58,7 +99,6 @@ void Win32InitOpenGL(
   
   SetPixelFormat(WindowDC, SuggestedPixelFormatIndex, &SuggestedPixelFormat);
   
-  HDC WindowDC = GetDC(Window);ET
   HGLRC OpenGLRC = wglCreateContext(WindowDC);
   if(wglMakeCurrent(WindowDC, OpenGLRC)){
     // Success!
@@ -73,6 +113,8 @@ internal void Win32DisplayBufferInWindow(HDC DeviceContext, int WindowWidth, int
   glClearColor(1.0f, 0.0f, 1.0f, 0.0f);
   glClear(GL_COLOR_BUFFER_BIT);
 
+  // (Muratori's triangle blitting)
+  /* 
   glMatrixMode(GL_MODELVIEW);
   glLoadIdentity();
   glMatrixMode(GL_PROJECTION);
@@ -93,6 +135,7 @@ internal void Win32DisplayBufferInWindow(HDC DeviceContext, int WindowWidth, int
   glVertex2i(0, WindowHeight);
 
   glEnd();
+  */
 
   SwapBuffers(DeviceContext);
 
