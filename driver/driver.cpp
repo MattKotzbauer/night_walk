@@ -8,6 +8,7 @@
 #include <math.h>
 #include <stdio.h> // (for temporary debugging (sprintf for performance tracking))
 #include <glad/glad.h>
+// #include <glad/gl.h>
 #include <GLFW/glfw3.h>
 
 #define global_variable static
@@ -106,7 +107,6 @@ internal win64_window_dimension GetWindowDimension(HWND Window){
 
   return Result;
 }
-
 
 internal void Win64InitWASAPI(HWND Window){
 
@@ -220,9 +220,9 @@ internal void Win64ResizeDIBSection(win64_offscreen_buffer *Buffer, int Width, i
   
 }
 
-internal void Win64InitOpenGL(HWND Window){
+internal void Win64InitOpenGL(HWND Window, HDC WindowDC){
 
-  HDC WindowDC = GetDC(Window);
+  // HDC WindowDC = GetDC(Window); 
   
   PIXELFORMATDESCRIPTOR DesiredPixelFormat = {};
   DesiredPixelFormat.nSize = sizeof(DesiredPixelFormat);
@@ -241,10 +241,16 @@ internal void Win64InitOpenGL(HWND Window){
   
   HGLRC OpenGLRC = wglCreateContext(WindowDC);
   if(wglMakeCurrent(WindowDC, OpenGLRC)){
-    // Success!
+    if(gladLoadGL()){
+      // Success
+      OutputDebugStringA("Loaded GL from GLAD\n");
+    }
+    else{
+    }
   }
   else{OutputDebugStringA("ERROR::OpenGL Initialization");}
-  ReleaseDC(Window, WindowDC);
+  
+  // ReleaseDC(Window, WindowDC);
 }
 
 internal void Win64DisplayBufferInWindow(HDC DeviceContext, int WindowWidth, int WindowHeight, win64_offscreen_buffer *Buffer){
@@ -378,6 +384,7 @@ int WINAPI WinMain(HINSTANCE Instance,
       if(Window)
 	{
 	  HDC DeviceContext = GetDC(Window);
+	  Win64InitOpenGL(Window, DeviceContext);
 	  
 	  // Sound initializations
 	  Win64InitWASAPI(Window);
