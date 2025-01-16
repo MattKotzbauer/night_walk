@@ -8,5 +8,6 @@ cl -FC -Zi /std:c++17 ..\driver\driver.cpp ..\driver\glad.c ^
 /NODEFAULTLIB:LIBCMT ^
 /NODEFAULTLIB:MSVCRTD ^
 user32.lib Gdi32.lib opengl32.lib glfw3.lib ^
-shell32.lib msvcrt.lib vcruntime.lib ucrt.lib
+shell32.lib msvcrt.lib vcruntime.lib ucrt.lib ^
+Ole32.lib Mmdevapi.lib
 popd

@@ -6,6 +6,7 @@
 // #include <gl.h> // (legacy OpenGL header (v1.1)
 #include <stdint.h> // (included by default with GLAD)
 #include <math.h>
+#include <stdio.h> // (for temporary debugging (sprintf for performance tracking))
 #include <glad/glad.h>
 #include <GLFW/glfw3.h>
 
@@ -15,6 +16,7 @@
 typedef uint32_t uint32;
 typedef uint64_t uint64;
 
+typedef int16_t int16;
 typedef int32_t int32;
 typedef int64_t int64;
 
@@ -27,13 +29,13 @@ typedef int32_t bool32;
 
 // STRUCTS
 
-struct win32_window_dimension
+// (Window structs)
+struct win64_window_dimension
 {
   int Width;
   int Height;
 };
-
-struct win32_offscreen_buffer
+struct win64_offscreen_buffer
 {
   BITMAPINFO Info;
   void *Memory;
@@ -42,7 +44,6 @@ struct win32_offscreen_buffer
   int Pitch;
   int BytesPerPixel;
 };
-
 struct game_offscreen_buffer
 {
   int Width;
@@ -51,11 +52,11 @@ struct game_offscreen_buffer
   void *Memory;
 }; 
 
+// (Input structs)
 struct game_button_state {
   // int HalfTransitionCount;
   bool EndedDown;
 };
-
 struct game_input {  
   union{
     game_button_state Buttons[6];
@@ -71,6 +72,14 @@ struct game_input {
   
 };
 
+// (Sound structs)
+struct game_sound_output_buffer
+{
+  int SamplesPerSecond;
+  int16 SampleCount;
+  int16 *Samples;
+};
+
 // (GLOBALS)
 
 // (Audio)
@@ -83,12 +92,12 @@ global_variable real32 sampleRateGlobal;
 
 
 global_variable bool GlobalRunning;
-global_variable win32_offscreen_buffer GlobalBackBuffer;
+global_variable win64_offscreen_buffer GlobalBackBuffer;
 
 
 // HELPER FUNCTIONS
-internal win32_window_dimension GetWindowDimension(HWND Window){
-  win632_window_dimension Result;
+internal win64_window_dimension GetWindowDimension(HWND Window){
+  win64_window_dimension Result;
   
   RECT ClientRect;
   GetClientRect(Window, &ClientRect);
@@ -99,7 +108,7 @@ internal win32_window_dimension GetWindowDimension(HWND Window){
 }
 
 
-internal void Win32InitWASAPI(HWND Window){
+internal void Win64InitWASAPI(HWND Window){
 
   // https://learn.microsoft.com/en-us/windows/win64/coreaudio/wasapi
   HRESULT hr;
@@ -185,7 +194,7 @@ internal void Win32InitWASAPI(HWND Window){
   sampleRateGlobal = pwfx->nSamplesPerSec;  
 }
 
-internal void Win32ResizeDIBSection(win32_offscreen_buffer *Buffer, int Width, int Height){
+internal void Win64ResizeDIBSection(win64_offscreen_buffer *Buffer, int Width, int Height){
   if (Buffer->Memory)
     {
       VirtualFree(Buffer->Memory, 0, MEM_RELEASE);
@@ -211,7 +220,7 @@ internal void Win32ResizeDIBSection(win32_offscreen_buffer *Buffer, int Width, i
   
 }
 
-internal void Win32InitOpenGL(HWND Window){
+internal void Win64InitOpenGL(HWND Window){
 
   HDC WindowDC = GetDC(Window);
   
@@ -238,7 +247,7 @@ internal void Win32InitOpenGL(HWND Window){
   ReleaseDC(Window, WindowDC);
 }
 
-internal void Win32DisplayBufferInWindow(HDC DeviceContext, int WindowWidth, int WindowHeight, win32_offscreen_buffer *Buffer){
+internal void Win64DisplayBufferInWindow(HDC DeviceContext, int WindowWidth, int WindowHeight, win64_offscreen_buffer *Buffer){
   glViewport(0, 0, WindowWidth, WindowHeight);
 
   glClearColor(1.0f, 0.0f, 1.0f, 0.0f);
@@ -273,7 +282,7 @@ internal void Win32DisplayBufferInWindow(HDC DeviceContext, int WindowWidth, int
 }
 
 
-LRESULT Win32MainWindowCallback(HWND Window, UINT Message, WPARAM WParam, LPARAM LParam){
+LRESULT Win64MainWindowCallback(HWND Window, UINT Message, WPARAM WParam, LPARAM LParam){
   LRESULT Result = 0;
 
   switch(Message){
@@ -300,8 +309,8 @@ LRESULT Win32MainWindowCallback(HWND Window, UINT Message, WPARAM WParam, LPARAM
       PAINTSTRUCT Paint;
       HDC DeviceContext = BeginPaint(Window, &Paint);
 
-      win32_window_dimension Dimension = GetWindowDimension(Window);
-      Win32DisplayBufferInWindow(DeviceContext, Dimension.Width, Dimension.Height, &GlobalBackBuffer);
+      win64_window_dimension Dimension = GetWindowDimension(Window);
+      Win64DisplayBufferInWindow(DeviceContext, Dimension.Width, Dimension.Height, &GlobalBackBuffer);
 
       EndPaint(Window, &Paint); // (returns bool)
  
@@ -322,8 +331,8 @@ LRESULT Win32MainWindowCallback(HWND Window, UINT Message, WPARAM WParam, LPARAM
 /*
 
 TODO: Implement:
-* Win32MainWindowCallback
-* Win32ResizeDIBSection
+* Win64MainWindowCallback
+* Win64ResizeDIBSection
 * game_input struct (means of storing game input)
 * game_offscreen_buffer struct (means of storing )
 * (game memory handling)
@@ -339,10 +348,10 @@ int WINAPI WinMain(HINSTANCE Instance,
 { 
   WNDCLASSA WindowClass = {};
 
-  Win32ResizeDIBSection(&GlobalBackBuffer, 1280, 720);
+  Win64ResizeDIBSection(&GlobalBackBuffer, 1280, 720);
   
   WindowClass.style = CS_HREDRAW|CS_VREDRAW;
-  WindowClass.lpfnWndProc = Win32MainWindowCallback;
+  WindowClass.lpfnWndProc = Win64MainWindowCallback;
   WindowClass.hInstance = Instance; 
   WindowClass.lpszClassName = "NightWalkWindowClass"; 
 
@@ -371,7 +380,7 @@ int WINAPI WinMain(HINSTANCE Instance,
 	  HDC DeviceContext = GetDC(Window);
 	  
 	  // Sound initializations
-	  Win32InitWASAPI(Window);
+	  Win64InitWASAPI(Window);
 	  HRESULT hr;
 	  int32 SoundBufferSize = 48000 * sizeof(int16) * 2;
 	  int16* Samples = (int16*)VirtualAlloc(0, SoundBufferSize, MEM_RESERVE|MEM_COMMIT, PAGE_READWRITE);
@@ -424,11 +433,11 @@ int WINAPI WinMain(HINSTANCE Instance,
 	      DispatchMessage(&Message); 
 	    }
 	    
-	    // (Win32 audio padding)
+	    // (Win64 audio padding)
 	    
 	    UINT32 currentPaddingFrames;
 	    hr = pAudioClientGlobal->GetCurrentPadding(&currentPaddingFrames);
-	    if(FAILED(hr)){ OutputDebugStringA("Failed to get current audio frame padding");}
+	    if(FAILED(hr)){ OutputDebugStringA("Failed to get current audio frame padding"); }
 	    UINT32 currentAvailableFrames = bufferFrameCountGlobal - currentPaddingFrames;
 	    
 	    // Video declarations
@@ -451,9 +460,9 @@ int WINAPI WinMain(HINSTANCE Instance,
 	      SoundBuffer.Samples = Samples;
 
 	      // Main Audio + Video Render Call
-	      GameUpdateAndRender(&GameMemory, NewInput, &GraphicalBuffer, &SoundBuffer);
+	      // GameUpdateAndRender(&GameMemory, NewInput, &GraphicalBuffer, &SoundBuffer);
 
-	      // Writing Audio to Win32
+	      // Writing Audio to Win64
 	      BYTE* pData = NULL; 
 	      hr = pRenderClientGlobal->GetBuffer(currentAvailableFrames, &pData);
 	      if(FAILED(hr)){ OutputDebugStringA("Failed to get audio buffer"); }
@@ -465,11 +474,11 @@ int WINAPI WinMain(HINSTANCE Instance,
 	      
 	    }
 	    else{
-	      GameUpdateAndRender(&GameMemory, NewInput, &GraphicalBuffer, NULL);
+	      // GameUpdateAndRender(&GameMemory, NewInput, &GraphicalBuffer, NULL);
 	    }
 	    
 	    win64_window_dimension Dimension = GetWindowDimension(Window);
-	    Win32DisplayBufferInWindow(DeviceContext, Dimension.Width, Dimension.Height, &GlobalBackBuffer);
+	    Win64DisplayBufferInWindow(DeviceContext, Dimension.Width, Dimension.Height, &GlobalBackBuffer);
 	 
 	    //++GlobalXOffset;
 
