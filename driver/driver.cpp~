@@ -1,18 +1,25 @@
 // INCLUDES / DEFINES
 
-#include <windows.h>
+#include <windows.h> // (base windows functionality)
+#include <mmdeviceapi.h> // (core audio api's)
+#include <audioclient.h>
 // #include <gl.h> // (legacy OpenGL header (v1.1)
 #include <stdint.h> // (included by default with GLAD)
 #include <math.h>
+#include <stdio.h> // (for temporary debugging (sprintf for performance tracking))
 #include <glad/glad.h>
+// #include <glad/gl.h>
 #include <GLFW/glfw3.h>
 
-#define global static
+#define global_variable static
 #define internal static
 
+typedef uint8_t uint8;
+typedef uint16_t uint16;
 typedef uint32_t uint32;
 typedef uint64_t uint64;
 
+typedef int16_t int16;
 typedef int32_t int32;
 typedef int64_t int64;
 
@@ -25,7 +32,13 @@ typedef int32_t bool32;
 
 // STRUCTS
 
-struct win32_offscreen_buffer
+// (Window structs)
+struct win64_window_dimension
+{
+  int Width;
+  int Height;
+};
+struct win64_offscreen_buffer
 {
   BITMAPINFO Info;
   void *Memory;
@@ -34,7 +47,6 @@ struct win32_offscreen_buffer
   int Pitch;
   int BytesPerPixel;
 };
-
 struct game_offscreen_buffer
 {
   int Width;
@@ -43,11 +55,11 @@ struct game_offscreen_buffer
   void *Memory;
 }; 
 
+// (Input structs)
 struct game_button_state {
   // int HalfTransitionCount;
   bool EndedDown;
 };
-
 struct game_input {  
   union{
     game_button_state Buttons[6];
@@ -63,6 +75,14 @@ struct game_input {
   
 };
 
+// (Sound structs)
+struct game_sound_output_buffer
+{
+  int SamplesPerSecond;
+  int16 SampleCount;
+  int16 *Samples;
+};
+
 // (GLOBALS)
 
 // (Audio)
@@ -73,21 +93,172 @@ global_variable IAudioRenderClient* pRenderClientGlobal;
 global_variable UINT32 bufferFrameCountGlobal;
 global_variable real32 sampleRateGlobal;
 
-
 global_variable bool GlobalRunning;
-global_variable win32_offscreen_buffer GlobalBackBuffer;
+global_variable win64_offscreen_buffer GlobalBackBuffer;
 
+// (Internal Display)
+global_variable const uint32 InternalWidth = 320;
+global_variable const uint32 InternalHeight = 180;
+#define IX(i,j) (((i)*InternalWidth)+(j))
+global_variable uint32* InternalPixels;
+
+global_variable const uint32 Alpha = (0xFF << 24);
+global_variable const uint32 Red = (0xFF << 16);
+global_variable const uint32 Green = (0xFF << 8);
+global_variable const uint32 Blue = 0XFF;
+
+struct GLBuffer {
+  GLuint MainTexture;
+  GLuint FrameVAO;
+  GLuint FrameVBO;
+  GLuint FrameEBO;
+  Shader* BaseShader;
+  uint32* Pixels;
+};
+
+global_variable GLBuffer GlobalGLRenderer;
 
 // HELPER FUNCTIONS
+internal void CheckGLError(char* label){
+  GLenum err;
+  while((err = glGetError()) != GL_NO_ERROR) {
+    char errorMsg[256];
+    sprintf(errorMsg, "OpenGL error at %s: 0x%x\n", label, err);
+    OutputDebugStringA(errorMsg);
+  }
+}
 
-internal void Win32InitOpenGL(HWND Window){
+internal win64_window_dimension GetWindowDimension(HWND Window){
+  win64_window_dimension Result;
+  
+  RECT ClientRect;
+  GetClientRect(Window, &ClientRect);
+  Result.Width = ClientRect.right - ClientRect.left;
+  Result.Height = ClientRect.bottom - ClientRect.top;
 
-  HDC WindowDC = GetDC(Window);
+  return Result;
+}
+
+internal void Win64InitWASAPI(HWND Window){
+
+  // https://learn.microsoft.com/en-us/windows/win64/coreaudio/wasapi
+  HRESULT hr;
+
+  // 1: Initialize COM
+  hr = CoInitializeEx(
+			 NULL,
+			 COINIT_MULTITHREADED
+			 );
+  if FAILED(hr){ return;}
+
+  // 2: Create IMMDeviceEnumerator
+  IMMDeviceEnumerator* pEnumerator = NULL;
+  hr = CoCreateInstance(
+			__uuidof(MMDeviceEnumerator),
+			NULL,
+			CLSCTX_ALL,
+			IID_PPV_ARGS(&pEnumerator)
+			);
+  if FAILED(hr){ return; }
+  
+  // 3: Get default audio endpoint
+  IMMDevice* pDevice = NULL;
+  hr = pEnumerator->GetDefaultAudioEndpoint(
+					    eRender,
+					    eConsole,
+					    &pDevice
+					    );
+  if(FAILED(hr)){ return; }
+
+  // 4: Activate IAudioClient
+  //IAudioClient *pAudioClient = NULL;
+  pAudioClientGlobal = NULL;
+  hr = pDevice->Activate(
+			 IID_IAudioClient,
+			 CLSCTX_ALL,
+			 NULL,
+			 (void**)&pAudioClientGlobal
+			 );
+  if (FAILED(hr)){
+    OutputDebugStringA("Activate IAudioClient failed.\n"); return; }
+  
+  // 5: Get mix format
+  WAVEFORMATEX *pwfx = NULL;
+  hr = pAudioClientGlobal->GetMixFormat(&pwfx);
+  if (FAILED(hr)) { return; }
+  
+  // 6: Initialize audio format
+  hr = pAudioClientGlobal->Initialize(
+				AUDCLNT_SHAREMODE_SHARED,
+				0,
+				10000000,
+				0,
+				pwfx,
+				NULL
+				);
+  if (FAILED(hr)) { return; }
+      
+  // 7: get size of allocated buffer
+  //  UINT32 bufferFrameCount;
+  
+  hr = pAudioClientGlobal->GetBufferSize(&bufferFrameCountGlobal);
+  if (FAILED(hr)) { return; }
+  
+  // 8: 
+  //IAudioRenderClient* pRenderClient = NULL;
+  pRenderClientGlobal = NULL;
+  hr = pAudioClientGlobal->GetService(
+				IID_IAudioRenderClient,
+				(void**)&pRenderClientGlobal
+				);
+  if (FAILED(hr)) { return; }
+  
+  // 9: start audio client
+  hr = pAudioClientGlobal->Start();
+  if (FAILED(hr)) { return; }
+
+  // (Check pwfx format)
+  bool isFormatFloat = (pwfx->wFormatTag == WAVE_FORMAT_EXTENSIBLE) ||
+                   (pwfx->wFormatTag == WAVE_FORMAT_IEEE_FLOAT);
+  if(!isFormatFloat) { return; }
+
+  sampleRateGlobal = pwfx->nSamplesPerSec;  
+}
+
+internal void Win64ResizeDIBSection(win64_offscreen_buffer *Buffer, int Width, int Height){
+  if (Buffer->Memory)
+    {
+      VirtualFree(Buffer->Memory, 0, MEM_RELEASE);
+    }
+
+  Buffer->Width = Width;
+  Buffer->Height = Height;
+  Buffer->BytesPerPixel = 4;
+  
+  Buffer->Info.bmiHeader.biSize = sizeof(Buffer->Info.bmiHeader);
+  Buffer->Info.bmiHeader.biWidth = Buffer->Width;
+  // NOTE: when biHeight field is negative, serves as clue to Windows to treat bitmap as top-down rather than bottom-up: first 3 bytes of image are colors for top-left pixel
+  Buffer->Info.bmiHeader.biHeight = -Buffer->Height;
+  Buffer->Info.bmiHeader.biPlanes = 1;
+  Buffer->Info.bmiHeader.biBitCount = 32;
+  Buffer->Info.bmiHeader.biCompression = BI_RGB;
+
+  int BitmapMemorySize = (Width * Height) * Buffer->BytesPerPixel;
+  Buffer->Memory = VirtualAlloc(0, BitmapMemorySize, MEM_COMMIT, PAGE_READWRITE);
+
+  // TODO: probably clear this to black
+  Buffer->Pitch = Buffer->BytesPerPixel * Width;
+  
+}
+
+internal void Win64InitOpenGL(HWND Window, HDC WindowDC){
+
+  // HDC WindowDC = GetDC(Window); 
   
   PIXELFORMATDESCRIPTOR DesiredPixelFormat = {};
   DesiredPixelFormat.nSize = sizeof(DesiredPixelFormat);
   DesiredPixelFormat.nVersion = 1;
-  DesiredPixelFormat.dwFlags = PFD_SUPPORT_OPENGL|PFD_DRAW_TO_WINDOW;
+  DesiredPixelFormat.dwFlags = PFD_SUPPORT_OPENGL|PFD_DRAW_TO_WINDOW|PFD_DOUBLEBUFFER; // (remove doublebuffer?)
   DesiredPixelFormat.cColorBits = 32;
   DesiredPixelFormat.cAlphaBits = 8;
   DesiredPixelFormat.iLayerType = PFD_MAIN_PLANE;
@@ -101,18 +272,177 @@ internal void Win32InitOpenGL(HWND Window){
   
   HGLRC OpenGLRC = wglCreateContext(WindowDC);
   if(wglMakeCurrent(WindowDC, OpenGLRC)){
-    // Success!
+    if(gladLoadGL()){
+      // Success
+      OutputDebugStringA("InitOpenGL() Success: Set Context, Loaded GL from GLAD\n");
+    }
+    else{
+    }
   }
   else{OutputDebugStringA("ERROR::OpenGL Initialization");}
-  ReleaseDC(Window, WindowDC);
+  
+  // (Print OpenGL version, vendor info)
+  /* 
+  const GLubyte* version = glGetString(GL_VERSION);
+  const GLubyte* vendor = glGetString(GL_VENDOR);
+  char debugInfo[256];
+  sprintf(debugInfo, "OpenGL Version: %s\nVendor: %s\n", version, vendor);
+  OutputDebugStringA(debugInfo);
+  */
+  
+  // ReleaseDC(Window, WindowDC);
 }
 
-internal void Win32DisplayBufferInWindow(HDC DeviceContext, int WindowWidth, int WindowHeight, win32_offscreen_buffer *Buffer){
-  glViewport(0, 0, WindowWidth, WindowHeight);
+internal void InitGlobalGLRendering(){
+  GlobalGLRenderer.BaseShader = new Shader("shader.vert", "shader.frag");
+  GlobalGLRenderer.BaseShader->Use();
 
+  real32 vertices[] = {
+    // positions        // texture coords
+    -1.0f,  1.0f, 0.0f,  0.0f, 1.0f,
+    1.0f,  1.0f, 0.0f,  1.0f, 1.0f,
+    1.0f, -1.0f, 0.0f,  1.0f, 0.0f,
+    -1.0f, -1.0f, 0.0f,  0.0f, 0.0f
+  };
+
+  uint32 indices[] = {
+    0, 1, 2,
+    2, 3, 0    
+  };
+
+  glGenVertexArrays(1, &GlobalGLRenderer.FrameVAO);
+  glGenBuffers(1, &GlobalGLRenderer.FrameVBO);
+  glGenBuffers(1, &GlobalGLRenderer.FrameEBO);
+
+  glBindVertexArray(GlobalGLRenderer.FrameVAO);
+
+  glBindBuffer(GL_ARRAY_BUFFER, GlobalGLRenderer.FrameVBO);
+  glBufferData(GL_ARRAY_BUFFER, sizeof(vertices), vertices, GL_STATIC_DRAW);
+
+  glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, GlobalGLRenderer.FrameEBO);
+  glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(indices), indices, GL_STATIC_DRAW);
+
+  // (Position attribute)
+  glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 5 * sizeof(float), (void*)0);
+  glEnableVertexAttribArray(0);
+  // (Texture coords attribute)
+  glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 5 * sizeof(float), (void*)(3 * sizeof(float)));
+  glEnableVertexAttribArray(1);
+  
+  // (Create main game texture)
+  glGenTextures(1, &GlobalGLRenderer.MainTexture);
+  glBindTexture(GL_TEXTURE_2D, GlobalGLRenderer.MainTexture);
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST); // (min filter)
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST); // (mag filter)
+
+  GlobalGLRenderer.Pixels = (uint32*)VirtualAlloc(0,
+						  sizeof(uint32) * InternalWidth * InternalHeight,
+						  MEM_RESERVE|MEM_COMMIT,
+						  PAGE_READWRITE);
+
+
+
+  glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, InternalWidth, InternalHeight, 0,
+                 GL_RGBA, GL_UNSIGNED_INT_8_8_8_8, GlobalGLRenderer.Pixels);
+  
+  // (Set texture unit)
+  GlobalGLRenderer.BaseShader->SetInt("gameTexture", 0);
+
+  // (Sample blue square)
+  for(int i = 0; i < InternalHeight; ++i){for(int j = 0; j < InternalWidth; ++j){ GlobalGLRenderer.Pixels[IX(i,j)] = 0xFF0000FF; }}
+
+  /// (Enable blending for particle effects. I'd be careful of how this affects the main render)
+  // glEnable(GL_BLEND);
+  // glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+  
+}
+
+// (pixel todos))
+/*
+  TODO: SetPixel, GetPixel, ClearPixels:
+  internal void SetPixel(int x, int y, uint8 r, uint8 g, uint8 b, uint8 a = 255) {
+    if (x >= 0 && x < InternalWidth && y >= 0 && y < InternalHeight) {
+        uint32 color = (a << 24) | (r << 16) | (g << 8) | b;
+        renderer.pixels[IX(y,x)] = color;
+    }
+}
+
+internal uint32 GetPixel(int x, int y) {
+    if (x >= 0 && x < InternalWidth && y >= 0 && y < InternalHeight) {
+        return renderer.pixels[IX(y,x)];
+    }
+    return 0;
+}
+
+internal void ClearPixels(uint32 color = 0) {
+    for(uint32 i = 0; i < InternalWidth * InternalHeight; ++i) {
+        renderer.pixels[i] = color;
+    }
+}
+
+ */
+
+internal void Win64DisplayBufferInWindow(HDC DeviceContext, int WindowWidth, int WindowHeight, win64_offscreen_buffer *Buffer){
+
+  real32 TargetAspectRatio = (real32)InternalWidth / (real32)InternalHeight;
+  real32 WindowAspectRatio = (real32)WindowWidth / (real32)WindowHeight;
+
+  int32 ViewportX = 0;
+  int32 ViewportY = 0;
+  int32 ViewportWidth = WindowWidth;
+  int32 ViewportHeight = WindowHeight;
+
+  
+  if(WindowAspectRatio > TargetAspectRatio){
+    ViewportWidth = (int32)(WindowWidth / TargetAspectRatio);
+    ViewportX = (WindowWidth - ViewportHeight) / 2;
+  }
+  else{
+    ViewportHeight = (int32)(WindowHeight / TargetAspectRatio);
+    ViewportY = (WindowHeight - ViewportHeight) / 2;
+  }
+  
   glClearColor(1.0f, 0.0f, 1.0f, 0.0f);
   glClear(GL_COLOR_BUFFER_BIT);
 
+  glViewport(ViewportX, ViewportY, ViewportWidth, ViewportHeight);
+  // glViewport(0, 0, WindowWidth, WindowHeight);
+  CheckGLError("After viewport");
+
+  GlobalGLRenderer.BaseShader->Use();
+  CheckGLError("After shader use");
+
+  // (error checking)
+  /* 
+  GLenum err;
+  while((err = glGetError()) != GL_NO_ERROR) {
+    char errorMsg[256];
+    sprintf(errorMsg, "OpenGL error: 0x%x\n", err);
+    OutputDebugStringA(errorMsg);
+  }
+  */
+  
+  glActiveTexture(GL_TEXTURE0);
+  glBindTexture(GL_TEXTURE_2D, GlobalGLRenderer.MainTexture);
+
+  CheckGLError("After bind texture");
+  
+  glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, InternalWidth, InternalHeight,
+                    GL_RGBA, GL_UNSIGNED_INT_8_8_8_8, GlobalGLRenderer.Pixels);
+
+  CheckGLError("After texsubimage");
+  
+  glBindVertexArray(GlobalGLRenderer.FrameVAO);
+
+  CheckGLError("After bind vao");
+  
+  glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
+
+  CheckGLError("After draw");
+  
+  SwapBuffers(DeviceContext);
+  
+  
   // (Muratori's triangle blitting)
   /* 
   glMatrixMode(GL_MODELVIEW);
@@ -137,14 +467,61 @@ internal void Win32DisplayBufferInWindow(HDC DeviceContext, int WindowWidth, int
   glEnd();
   */
 
-  SwapBuffers(DeviceContext);
 
 }
+
+
+LRESULT Win64MainWindowCallback(HWND Window, UINT Message, WPARAM WParam, LPARAM LParam){
+  LRESULT Result = 0;
+
+  switch(Message){
+
+  case WM_SYSKEYDOWN:
+    {
+      if(WParam == VK_F4 && (LParam & (1 << 29))){
+	GlobalRunning = false;
+      }
+    } break;
+    
+  case WM_CLOSE:
+    {
+      GlobalRunning = false;
+    } break;
+    
+  case WM_DESTROY:
+    {
+      GlobalRunning = false;
+    } break;
+    
+  case WM_PAINT:
+    {
+      PAINTSTRUCT Paint;
+      HDC DeviceContext = BeginPaint(Window, &Paint);
+
+      win64_window_dimension Dimension = GetWindowDimension(Window);
+      Win64DisplayBufferInWindow(DeviceContext, Dimension.Width, Dimension.Height, &GlobalBackBuffer);
+
+      EndPaint(Window, &Paint); // (returns bool)
+ 
+    } break;
+    
+  default:
+    {
+      Result = DefWindowProcA(Window, Message, WParam, LParam);
+    } break;
+    
+  }
+  
+  return Result;
+}
+
+  
 
 /*
 
 TODO: Implement:
-* Win32ResizeDIBSection
+* Win64MainWindowCallback
+* Win64ResizeDIBSection
 * game_input struct (means of storing game input)
 * game_offscreen_buffer struct (means of storing )
 * (game memory handling)
@@ -160,7 +537,7 @@ int WINAPI WinMain(HINSTANCE Instance,
 { 
   WNDCLASSA WindowClass = {};
 
-  Win32ResizeDIBSection(&GlobalBackBuffer, 1280, 720);
+  Win64ResizeDIBSection(&GlobalBackBuffer, 1280, 720);
   
   WindowClass.style = CS_HREDRAW|CS_VREDRAW;
   WindowClass.lpfnWndProc = Win64MainWindowCallback;
@@ -190,15 +567,16 @@ int WINAPI WinMain(HINSTANCE Instance,
       if(Window)
 	{
 	  HDC DeviceContext = GetDC(Window);
-
-	  // (Sound)
-	  /*             
+	  Win64InitOpenGL(Window, DeviceContext);
+	  InitGlobalGLRendering();
+	  
 	  // Sound initializations
 	  Win64InitWASAPI(Window);
 	  HRESULT hr;
 	  int32 SoundBufferSize = 48000 * sizeof(int16) * 2;
 	  int16* Samples = (int16*)VirtualAlloc(0, SoundBufferSize, MEM_RESERVE|MEM_COMMIT, PAGE_READWRITE);
-	  
+
+	  /* 
 	  // (Game Memory Handling)
 #if HANDMADE_INTERNAL
 	  LPVOID BaseAddress = (LPVOID)Terabytes((uint64)2);
@@ -246,12 +624,12 @@ int WINAPI WinMain(HINSTANCE Instance,
 	      DispatchMessage(&Message); 
 	    }
 	    
-	    // (Win32 audio padding)
-	    /* 
+	    // (Win64 audio padding)
+	    
 	    UINT32 currentPaddingFrames;
 	    hr = pAudioClientGlobal->GetCurrentPadding(&currentPaddingFrames);
-	    if(FAILED(hr)){ OutputDebugStringA("Failed to get current audio frame padding");}
-	    UINT32 currentAvailableFrames = bufferFrameCountGlobal - currentPaddingFrames; */
+	    if(FAILED(hr)){ OutputDebugStringA("Failed to get current audio frame padding"); }
+	    UINT32 currentAvailableFrames = bufferFrameCountGlobal - currentPaddingFrames;
 	    
 	    // Video declarations
 	    
@@ -273,9 +651,9 @@ int WINAPI WinMain(HINSTANCE Instance,
 	      SoundBuffer.Samples = Samples;
 
 	      // Main Audio + Video Render Call
-	      GameUpdateAndRender(&GameMemory, NewInput, &GraphicalBuffer, &SoundBuffer);
+	      // GameUpdateAndRender(&GameMemory, NewInput, &GraphicalBuffer, &SoundBuffer);
 
-	      // Writing Audio to Win32
+	      // Writing Audio to Win64
 	      BYTE* pData = NULL; 
 	      hr = pRenderClientGlobal->GetBuffer(currentAvailableFrames, &pData);
 	      if(FAILED(hr)){ OutputDebugStringA("Failed to get audio buffer"); }
@@ -287,11 +665,11 @@ int WINAPI WinMain(HINSTANCE Instance,
 	      
 	    }
 	    else{
-	      GameUpdateAndRender(&GameMemory, NewInput, &GraphicalBuffer, NULL);
+	      // GameUpdateAndRender(&GameMemory, NewInput, &GraphicalBuffer, NULL);
 	    }
 	    
 	    win64_window_dimension Dimension = GetWindowDimension(Window);
-	    Win32DisplayBufferInWindow(DeviceContext, Dimension.Width, Dimension.Height, &GlobalBackBuffer);
+	    Win64DisplayBufferInWindow(DeviceContext, Dimension.Width, Dimension.Height, &GlobalBackBuffer);
 	 
 	    //++GlobalXOffset;
 

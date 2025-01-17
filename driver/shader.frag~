@@ -1,0 +1,12 @@
+// Fragment Shader
+
+#version 330 core
+
+in vec2 TexCoord;
+out vec4 FragColor;
+unifom sampler2D gameTexture;
+
+void main() {
+     FragColor = texture(gameTexture, TexCoord); 
+}
+

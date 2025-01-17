@@ -14,6 +14,8 @@
 #define global_variable static
 #define internal static
 
+typedef uint8_t uint8;
+typedef uint16_t uint16;
 typedef uint32_t uint32;
 typedef uint64_t uint64;
 
@@ -91,12 +93,41 @@ global_variable IAudioRenderClient* pRenderClientGlobal;
 global_variable UINT32 bufferFrameCountGlobal;
 global_variable real32 sampleRateGlobal;
 
-
 global_variable bool GlobalRunning;
 global_variable win64_offscreen_buffer GlobalBackBuffer;
 
+// (Internal Display)
+global_variable const uint32 InternalWidth = 320;
+global_variable const uint32 InternalHeight = 180;
+#define IX(i,j) (((i)*InternalWidth)+(j))
+global_variable uint32* InternalPixels;
+
+global_variable const uint32 Red = (0xFF << 24);
+global_variable const uint32 Green = (0xFF << 16);
+global_variable const uint32 Blue = (0xFF << 8);
+global_variable const uint32 Alpha = 0XFF;
+
+struct GLBuffer {
+  GLuint MainTexture;
+  GLuint FrameVAO;
+  GLuint FrameVBO;
+  GLuint FrameEBO;
+  Shader* BaseShader;
+  uint32* Pixels;
+};
+
+global_variable GLBuffer GlobalGLRenderer;
 
 // HELPER FUNCTIONS
+internal void CheckGLError(char* label){
+  GLenum err;
+  while((err = glGetError()) != GL_NO_ERROR) {
+    char errorMsg[256];
+    sprintf(errorMsg, "OpenGL error at %s: 0x%x\n", label, err);
+    OutputDebugStringA(errorMsg);
+  }
+}
+
 internal win64_window_dimension GetWindowDimension(HWND Window){
   win64_window_dimension Result;
   
@@ -243,39 +274,174 @@ internal void Win64InitOpenGL(HWND Window, HDC WindowDC){
   if(wglMakeCurrent(WindowDC, OpenGLRC)){
     if(gladLoadGL()){
       // Success
-      OutputDebugStringA("Loaded GL from GLAD\n");
+      OutputDebugStringA("InitOpenGL() Success: Set Context, Loaded GL from GLAD\n");
     }
     else{
     }
   }
   else{OutputDebugStringA("ERROR::OpenGL Initialization");}
-
+  
   // (Print OpenGL version, vendor info)
+  /* 
   const GLubyte* version = glGetString(GL_VERSION);
   const GLubyte* vendor = glGetString(GL_VENDOR);
   char debugInfo[256];
   sprintf(debugInfo, "OpenGL Version: %s\nVendor: %s\n", version, vendor);
   OutputDebugStringA(debugInfo);
+  */
   
   // ReleaseDC(Window, WindowDC);
 }
 
+internal void InitGlobalGLRendering(){
+  GlobalGLRenderer.BaseShader = new Shader("../driver/shader.vert", "../driver/shader.frag");
+  GlobalGLRenderer.BaseShader->Use();
+
+  real32 vertices[] = {
+    // positions        // texture coords
+    -1.0f,  1.0f, 0.0f,  0.0f, 1.0f,
+    1.0f,  1.0f, 0.0f,  1.0f, 1.0f,
+    1.0f, -1.0f, 0.0f,  1.0f, 0.0f,
+    -1.0f, -1.0f, 0.0f,  0.0f, 0.0f
+  };
+
+  uint32 indices[] = {
+    0, 1, 2,
+    2, 3, 0    
+  };
+
+  glGenVertexArrays(1, &GlobalGLRenderer.FrameVAO);
+  glGenBuffers(1, &GlobalGLRenderer.FrameVBO);
+  glGenBuffers(1, &GlobalGLRenderer.FrameEBO);
+
+  glBindVertexArray(GlobalGLRenderer.FrameVAO);
+
+  glBindBuffer(GL_ARRAY_BUFFER, GlobalGLRenderer.FrameVBO);
+  glBufferData(GL_ARRAY_BUFFER, sizeof(vertices), vertices, GL_STATIC_DRAW);
+
+  glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, GlobalGLRenderer.FrameEBO);
+  glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(indices), indices, GL_STATIC_DRAW);
+
+  // (Position attribute)
+  glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 5 * sizeof(float), (void*)0);
+  glEnableVertexAttribArray(0);
+  // (Texture coords attribute)
+  glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 5 * sizeof(float), (void*)(3 * sizeof(float)));
+  glEnableVertexAttribArray(1);
+  
+  // (Create main game texture)
+  glGenTextures(1, &GlobalGLRenderer.MainTexture);
+  glBindTexture(GL_TEXTURE_2D, GlobalGLRenderer.MainTexture);
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST); // (min filter)
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST); // (mag filter)
+
+  GlobalGLRenderer.Pixels = (uint32*)VirtualAlloc(0,
+						  sizeof(uint32) * InternalWidth * InternalHeight,
+						  MEM_RESERVE|MEM_COMMIT,
+						  PAGE_READWRITE);
+
+
+
+  glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, InternalWidth, InternalHeight, 0,
+                 GL_RGBA, GL_UNSIGNED_INT_8_8_8_8, GlobalGLRenderer.Pixels);
+  
+  // (Set texture unit)
+  GlobalGLRenderer.BaseShader->SetInt("gameTexture", 0);
+
+  // (Sample blue square)
+  for(int i = 0; i < InternalHeight; ++i){for(int j = 0; j < InternalWidth; ++j){ GlobalGLRenderer.Pixels[IX(i,j)] = Alpha|Blue; }}
+
+  /// (Enable blending for particle effects. I'd be careful of how this affects the main render)
+  // glEnable(GL_BLEND);
+  // glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+  
+}
+
+// (pixel todos))
+/*
+  TODO: SetPixel, GetPixel, ClearPixels:
+  internal void SetPixel(int x, int y, uint8 r, uint8 g, uint8 b, uint8 a = 255) {
+    if (x >= 0 && x < InternalWidth && y >= 0 && y < InternalHeight) {
+        uint32 color = (a << 24) | (r << 16) | (g << 8) | b;
+        renderer.pixels[IX(y,x)] = color;
+    }
+}
+
+internal uint32 GetPixel(int x, int y) {
+    if (x >= 0 && x < InternalWidth && y >= 0 && y < InternalHeight) {
+        return renderer.pixels[IX(y,x)];
+    }
+    return 0;
+}
+
+internal void ClearPixels(uint32 color = 0) {
+    for(uint32 i = 0; i < InternalWidth * InternalHeight; ++i) {
+        renderer.pixels[i] = color;
+    }
+}
+
+ */
+
 internal void Win64DisplayBufferInWindow(HDC DeviceContext, int WindowWidth, int WindowHeight, win64_offscreen_buffer *Buffer){
 
-  glViewport(0, 0, WindowWidth, WindowHeight);
+  real32 TargetAspectRatio = (real32)InternalWidth / (real32)InternalHeight;
+  real32 WindowAspectRatio = (real32)WindowWidth / (real32)WindowHeight;
 
+  int32 ViewportX = 0;
+  int32 ViewportY = 0;
+  int32 ViewportWidth = WindowWidth;
+  int32 ViewportHeight = WindowHeight;
+
+  
+  if(WindowAspectRatio > TargetAspectRatio){
+    ViewportWidth = (int32)(WindowWidth / TargetAspectRatio);
+    ViewportX = (WindowWidth - ViewportHeight) / 2;
+  }
+  else{
+    ViewportHeight = (int32)(WindowHeight / TargetAspectRatio);
+    ViewportY = (WindowHeight - ViewportHeight) / 2;
+  }
+  
   glClearColor(1.0f, 0.0f, 1.0f, 0.0f);
   glClear(GL_COLOR_BUFFER_BIT);
 
+  glViewport(ViewportX, ViewportY, ViewportWidth, ViewportHeight);
+  // glViewport(0, 0, WindowWidth, WindowHeight);
+  CheckGLError("After viewport");
+
+  GlobalGLRenderer.BaseShader->Use();
+  CheckGLError("After shader use");
+
+  // (error checking)
+  /* 
   GLenum err;
   while((err = glGetError()) != GL_NO_ERROR) {
     char errorMsg[256];
     sprintf(errorMsg, "OpenGL error: 0x%x\n", err);
     OutputDebugStringA(errorMsg);
   }
+  */
+  
+  glActiveTexture(GL_TEXTURE0);
+  glBindTexture(GL_TEXTURE_2D, GlobalGLRenderer.MainTexture);
+
+  CheckGLError("After bind texture");
+  
+  glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, InternalWidth, InternalHeight,
+                    GL_RGBA, GL_UNSIGNED_INT_8_8_8_8, GlobalGLRenderer.Pixels);
+
+  CheckGLError("After texsubimage");
+  
+  glBindVertexArray(GlobalGLRenderer.FrameVAO);
+
+  CheckGLError("After bind vao");
+  
+  glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
+
+  CheckGLError("After draw");
   
   SwapBuffers(DeviceContext);
-
+  
   
   // (Muratori's triangle blitting)
   /* 
@@ -402,6 +568,7 @@ int WINAPI WinMain(HINSTANCE Instance,
 	{
 	  HDC DeviceContext = GetDC(Window);
 	  Win64InitOpenGL(Window, DeviceContext);
+	  InitGlobalGLRendering();
 	  
 	  // Sound initializations
 	  Win64InitWASAPI(Window);
