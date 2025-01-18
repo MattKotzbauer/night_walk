@@ -3,13 +3,13 @@
 #include <windows.h> // (base windows functionality)
 #include <mmdeviceapi.h> // (core audio api's)
 #include <audioclient.h>
-// #include <gl.h> // (legacy OpenGL header (v1.1)
 #include <stdint.h> // (included by default with GLAD)
-#include <math.h>
-#include <stdio.h> // (for temporary debugging (sprintf for performance tracking))
 #include <glad/glad.h>
-// #include <glad/gl.h>
 #include <GLFW/glfw3.h>
+
+#include <stdlib.h> // TODO: see if we can put in rand() ourselves without the rest of the file
+#include <math.h> // TODO: examine math implementations, see if we can hand-make? (e.g. sin)
+#include <stdio.h> // (for temporary debugging (sprintf for performance tracking))
 
 #define global_variable static
 #define internal static
@@ -83,6 +83,67 @@ struct game_sound_output_buffer
   int16 *Samples;
 };
 
+// (Particle structs)
+struct game_raindrop {
+  real32 PosX, PosY;
+  real32 Angle, Velocity;
+  real32 Size; // (Radius in pixels)
+  bool32 Active;
+};
+
+struct RainSystem {
+  internal const uint32 MAX_RAINDROPS = 1000;
+  game_raindrop GameRaindrops[MAX_RAINDROPS];
+  uint32 ActiveCount;
+  
+  void Init(){
+    //ActiveCount = MAX_RAINDROPS / 2;
+    ActiveCount = 900;
+    for(int i = 0; i < ActiveCount; ++i){
+      Reset(GameRaindrops[i]);
+    }
+  }
+  
+  void Update(){
+    for(int i = 0; i < ActiveCount; ++i){
+      game_raindrop& Drop = GameRaindrops[i];
+      if(!Drop.Active) continue;
+      
+      // (Move pixel along velocity if defined)
+      Drop.PosX += Drop.Velocity * sin(Drop.Angle);;
+      Drop.PosY += -Drop.Velocity * cos(Drop.Angle);
+      // (Angle, Velocity, Size remain constant)
+    
+      // (Check for ground collision)
+      if(Drop.PosY < 0 || Drop.PosX < 0 || Drop.PosX > InternalWidth){
+	// (resetting logic)
+	Reset(Drop);
+      }
+    }
+  }
+
+  void Reset(game_raindrop& Drop){
+    // (When drop is either (A) unitialized or (B) reaches bottom of screen)
+
+    // (set random posX (any pixel within viewport))
+    Drop.PosX = (real32)(rand() % InternalWidth);
+    Drop.PosY = (real32)(InternalHeight + 10); // TODO: do we need to randomize? e.g. (real32)(InternalHeight + (rand() % 50));
+    
+    // (set random angle: (4 - 4.5 radians))
+    Drop.Angle = 4.0f + (0.5f * ((real32)rand() / RAND_MAX));
+
+    // (set random velocity: (3 - 5))
+    Drop.Velocity = 3.0f + (2.0f * ((real32)rand() / RAND_MAX));
+
+    // (size, active)
+    Drop.Size = 1.0f + ((real32)rand() / RAND_MAX); // TODO: can size be uniform?
+    Drop.Active = true;
+
+    
+  }
+  
+};
+
 // (GLOBALS)
 
 // (Audio)
@@ -119,6 +180,8 @@ struct GLBuffer {
 global_variable GLBuffer GlobalGLRenderer;
 
 // HELPER FUNCTIONS
+
+// (OpenGL Error Checking))
 internal void CheckGLError(char* label){
   GLenum err;
   while((err = glGetError()) != GL_NO_ERROR) {
@@ -128,6 +191,7 @@ internal void CheckGLError(char* label){
   }
 }
 
+// (Gets Current Window Dimensions)
 internal win64_window_dimension GetWindowDimension(HWND Window){
   win64_window_dimension Result;
   
@@ -139,6 +203,7 @@ internal win64_window_dimension GetWindowDimension(HWND Window){
   return Result;
 }
 
+// (Windows Audio Init.)
 internal void Win64InitWASAPI(HWND Window){
 
   // https://learn.microsoft.com/en-us/windows/win64/coreaudio/wasapi
@@ -225,6 +290,7 @@ internal void Win64InitWASAPI(HWND Window){
   sampleRateGlobal = pwfx->nSamplesPerSec;  
 }
 
+// (Widow Resize)
 internal void Win64ResizeDIBSection(win64_offscreen_buffer *Buffer, int Width, int Height){
   if (Buffer->Memory)
     {
@@ -251,6 +317,7 @@ internal void Win64ResizeDIBSection(win64_offscreen_buffer *Buffer, int Width, i
   
 }
 
+// (OpenGL Windows Initialization)
 internal void Win64InitOpenGL(HWND Window, HDC WindowDC){
 
   // HDC WindowDC = GetDC(Window); 
@@ -293,6 +360,7 @@ internal void Win64InitOpenGL(HWND Window, HDC WindowDC){
   // ReleaseDC(Window, WindowDC);
 }
 
+// (OpenGL Testuring Initialization)
 internal void InitGlobalGLRendering(){
   GlobalGLRenderer.BaseShader = new Shader("../driver/shader.vert", "../driver/shader.frag");
   GlobalGLRenderer.BaseShader->Use();
@@ -348,40 +416,17 @@ internal void InitGlobalGLRendering(){
   // (Set texture unit)
   GlobalGLRenderer.BaseShader->SetInt("gameTexture", 0);
 
-  // (Sample blue square)
-  for(int i = 0; i < InternalHeight; ++i){for(int j = 0; j < InternalWidth; ++j){ GlobalGLRenderer.Pixels[IX(i,j)] = Alpha|Blue; }}
+  // (Manual blitting)
+  // for(int i = 0; i < InternalHeight; ++i){for(int j = 0; j < InternalWidth; ++j){ GlobalGLRenderer.Pixels[IX(i,j)] = Alpha|Blue; }}
+  // for(int i = 0; i < 100; ++i){ GlobalGLRenderer.Pixels[IX(i, 100)] = Alpha|Red|Blue;}
 
   /// (Enable blending for particle effects. I'd be careful of how this affects the main render)
-  // glEnable(GL_BLEND);
-  // glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+  glEnable(GL_BLEND);
+  glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
   
 }
 
-// (pixel todos))
-/*
-  TODO: SetPixel, GetPixel, ClearPixels:
-  internal void SetPixel(int x, int y, uint8 r, uint8 g, uint8 b, uint8 a = 255) {
-    if (x >= 0 && x < InternalWidth && y >= 0 && y < InternalHeight) {
-        uint32 color = (a << 24) | (r << 16) | (g << 8) | b;
-        renderer.pixels[IX(y,x)] = color;
-    }
-}
-
-internal uint32 GetPixel(int x, int y) {
-    if (x >= 0 && x < InternalWidth && y >= 0 && y < InternalHeight) {
-        return renderer.pixels[IX(y,x)];
-    }
-    return 0;
-}
-
-internal void ClearPixels(uint32 color = 0) {
-    for(uint32 i = 0; i < InternalWidth * InternalHeight; ++i) {
-        renderer.pixels[i] = color;
-    }
-}
-
- */
-
+// (OpenGL-Based Screen Blitting)
 internal void Win64DisplayBufferInWindow(HDC DeviceContext, int WindowWidth, int WindowHeight, win64_offscreen_buffer *Buffer){
 
   real32 TargetAspectRatio = (real32)InternalWidth / (real32)InternalHeight;
@@ -402,75 +447,38 @@ internal void Win64DisplayBufferInWindow(HDC DeviceContext, int WindowWidth, int
     ViewportY = (WindowHeight - ViewportHeight) / 2;
   }
   
-  glClearColor(1.0f, 0.0f, 1.0f, 0.0f);
+  glClearColor(1.0f, 0.0f, 1.0f, 0.0f); // Pink
   glClear(GL_COLOR_BUFFER_BIT);
 
   glViewport(ViewportX, ViewportY, ViewportWidth, ViewportHeight);
-  // glViewport(0, 0, WindowWidth, WindowHeight);
-  CheckGLError("After viewport");
+  // CheckGLError("After viewport");
 
   GlobalGLRenderer.BaseShader->Use();
-  CheckGLError("After shader use");
+  // CheckGLError("After shader use");
 
-  // (error checking)
-  /* 
-  GLenum err;
-  while((err = glGetError()) != GL_NO_ERROR) {
-    char errorMsg[256];
-    sprintf(errorMsg, "OpenGL error: 0x%x\n", err);
-    OutputDebugStringA(errorMsg);
-  }
-  */
-  
   glActiveTexture(GL_TEXTURE0);
   glBindTexture(GL_TEXTURE_2D, GlobalGLRenderer.MainTexture);
 
-  CheckGLError("After bind texture");
+  // CheckGLError("After bind texture");
   
   glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, InternalWidth, InternalHeight,
                     GL_RGBA, GL_UNSIGNED_INT_8_8_8_8, GlobalGLRenderer.Pixels);
 
-  CheckGLError("After texsubimage");
+  // CheckGLError("After texsubimage");
   
   glBindVertexArray(GlobalGLRenderer.FrameVAO);
 
-  CheckGLError("After bind vao");
+  // CheckGLError("After bind vao");
   
   glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
 
-  CheckGLError("After draw");
+  // CheckGLError("After draw");
   
   SwapBuffers(DeviceContext);
-  
-  
-  // (Muratori's triangle blitting)
-  /* 
-  glMatrixMode(GL_MODELVIEW);
-  glLoadIdentity();
-  glMatrixMode(GL_PROJECTION);
-  glLoadIdentity();
-
-  // Triangles: 
-  // (Lower Triangle)
-  glBegin(GL_TRIANGLES);
-  
-  glVertex2i(0, 0);
-  glVertex2i(WindowWidth, 0);
-  glVertex2i(WindowWidth, WindowHeight);
-
-  // (Upper Triangle)
-0  
-  glVertex2i(0, 0);
-  glVertex2i(WindowWidth, WindowHeight);
-  glVertex2i(0, WindowHeight);
-
-  glEnd();
-  */
-
 
 }
 
-
+// (Window Procedure)
 LRESULT Win64MainWindowCallback(HWND Window, UINT Message, WPARAM WParam, LPARAM LParam){
   LRESULT Result = 0;
 
