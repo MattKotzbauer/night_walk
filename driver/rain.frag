@@ -15,8 +15,8 @@ void main() {
     float alpha = texture(rainTexture, TexCoord).r;
     
     // Optional: Add motion blur based on velocity
-    float stretch = length(Velocity) * 0.01;
-    alpha *= 1.0 + stretch;
+    // float stretch = length(Velocity) * 0.01;
+    // alpha *= 1.0 + stretch;
     
     FragColor = baseColor * alpha;
 }

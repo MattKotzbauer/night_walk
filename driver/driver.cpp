@@ -37,6 +37,26 @@ global_variable const uint32 InternalHeight = 180;
 // STRUCTS
 
 // (Window structs)
+
+struct GLBuffer {
+  // (Base rendering resources)
+  GLuint MainTexture;
+  GLuint FrameVAO;
+  GLuint FrameVBO;
+  GLuint FrameEBO;
+  Shader* BaseShader;
+  uint32* Pixels;
+  
+  // (Rain rendering)
+  GLuint RainVAO;
+  GLuint RainVBO; // (single-raindrop vertex data)
+  GLuint RainInstanceVBO; // (data for instances)
+  GLuint RainTexture;
+  Shader* RainShader;
+};
+global_variable GLBuffer GlobalGLRenderer;
+
+
 struct win64_window_dimension
 {
   int Width;
@@ -50,7 +70,7 @@ struct win64_offscreen_buffer
   int Height;
   int Pitch;
   int BytesPerPixel;
-};
+ };
 struct game_offscreen_buffer
 {
   int Width;
@@ -99,6 +119,74 @@ struct rain_system {
   internal const uint32 MAX_RAINDROPS = 1000;
   game_raindrop GameRaindrops[MAX_RAINDROPS];
   uint32 ActiveCount;
+
+  const real32 RainVertices[16] = {
+    // positions     // texture coords
+    -0.5f, -0.5f,   0.0f, 0.0f,
+    0.5f, -0.5f,   1.0f, 0.0f,
+    0.5f,  0.5f,   1.0f, 1.0f,
+    -0.5f,  0.5f,   0.0f, 1.0f
+  };
+
+  void InitGL(){
+    real32 RainVertices[] = {
+      // positions     // texture coords
+      -0.5f, -0.5f,   0.0f, 0.0f,
+      0.5f, -0.5f,   1.0f, 0.0f,
+      0.5f,  0.5f,   1.0f, 1.0f,
+      -0.5f,  0.5f,   0.0f, 1.0f
+    };
+
+    // Generate and bind rain VAO/VBO
+    glGenVertexArrays(1, &GlobalGLRenderer.RainVAO);
+    glGenBuffers(1, &GlobalGLRenderer.RainVBO);
+    glGenBuffers(1, &GlobalGLRenderer.RainInstanceVBO);
+        
+    glBindVertexArray(GlobalGLRenderer.RainVAO);
+    glBindBuffer(GL_ARRAY_BUFFER, GlobalGLRenderer.RainVBO);
+    glBufferData(GL_ARRAY_BUFFER, sizeof(RainVertices), RainVertices, GL_STATIC_DRAW);
+
+    // (Positions)
+    glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(real32), (void*)0);
+    glEnableVertexAttribArray(0);
+
+    // (Texture coords)
+    glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(real32), (void*)(2 * sizeof(real32)));
+    glEnableVertexAttribArray(1);
+
+    glBindBuffer(GL_ARRAY_BUFFER, GlobalGLRenderer.RainInstanceVBO);
+
+    glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(real32), (void*)0);  // Position
+    glVertexAttribPointer(3, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(real32), (void*)(2 * sizeof(real32))); // Velocity
+
+    glEnableVertexAttribArray(2);
+    glEnableVertexAttribArray(3);
+
+    glVertexAttribDivisor(2, 1);  // Instance rate for position
+    glVertexAttribDivisor(3, 1);  // Instance rate for velocity	  
+
+    glGenTextures(1, &GlobalGLRenderer.RainTexture);
+    glBindTexture(GL_TEXTURE_2D, GlobalGLRenderer.RainTexture);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+
+    const int32 TEX_SIZE = 32;
+    unsigned char texData[TEX_SIZE * TEX_SIZE];
+
+    // (Make texture)
+    for(int y = 0; y < TEX_SIZE; y++) {
+      for(int x = 0; x < TEX_SIZE; x++) {
+	float dx = (x - TEX_SIZE/2.0f) / (TEX_SIZE/4.0f);
+	float dy = (y - TEX_SIZE/2.0f) / (TEX_SIZE/2.0f);
+	float dist = dx*dx + dy*dy;
+	texData[y*TEX_SIZE + x] = (dist <= 1.0f) ? 255 : 0;
+      }
+    }
+        
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_R8, TEX_SIZE, TEX_SIZE, 0,
+		 GL_RED, GL_UNSIGNED_BYTE, texData);
+    
+  }
   
   void Init(){
     //ActiveCount = MAX_RAINDROPS / 2;
@@ -106,6 +194,29 @@ struct rain_system {
     for(int i = 0; i < ActiveCount; ++i){
       Reset(GameRaindrops[i]);
     }
+    UpdateInstanceData();
+  }
+
+  void UpdateInstanceData(){
+    real32 InstanceDataBuffer[MAX_RAINDROPS*4];
+
+    for(int i = 0; i < ActiveCount; ++i){
+      const game_raindrop& CurrentDrop = GameRaindrops[i];
+      if(!CurrentDrop.Active) continue;
+
+      InstanceDataBuffer[i * 4] = CurrentDrop.PosX;
+      InstanceDataBuffer[i * 4 + 1] = CurrentDrop.PosY;
+      InstanceDataBuffer[i * 4 + 2] = CurrentDrop.Velocity * sin(CurrentDrop.Angle);
+      InstanceDataBuffer[i * 4 + 3] = -CurrentDrop.Velocity * cos(CurrentDrop.Angle);
+    }
+
+    glBindBuffer(GL_ARRAY_BUFFER, GlobalGLRenderer.RainInstanceVBO);
+    glBufferData(GL_ARRAY_BUFFER,
+		 sizeof(real32) * ActiveCount * 4,
+		 InstanceDataBuffer,
+		 GL_DYNAMIC_DRAW);
+
+    
   }
   
   void Update(){
@@ -124,6 +235,7 @@ struct rain_system {
 	Reset(Drop);
       }
     }
+    UpdateInstanceData();
   }
 
   void Reset(game_raindrop& Drop){
@@ -165,31 +277,11 @@ global_variable win64_offscreen_buffer GlobalBackBuffer;
 
 // (Internal Display)
 #define IX(i,j) (((i)*InternalWidth)+(j))
-global_variable uint32* InternalPixels;
 
 global_variable const uint32 Red = (0xFF << 24);
 global_variable const uint32 Green = (0xFF << 16);
 global_variable const uint32 Blue = (0xFF << 8);
 global_variable const uint32 Alpha = 0XFF;
-
-struct GLBuffer {
-  // (Base rendering resources)
-  GLuint MainTexture;
-  GLuint FrameVAO;
-  GLuint FrameVBO;
-  GLuint FrameEBO;
-  Shader* BaseShader;
-  uint32* Pixels;
-  
-  // (Rain rendering)
-  GLuint RainVAO;
-  GLuint RainVBO; // (single-raindrop vertex data)
-  GLuint RainInstanceVBO; // (data for instances)
-  GLuint RainTexture;
-  Shader* RainShader;
-};
-
-global_variable GLBuffer GlobalGLRenderer;
 
 // HELPER FUNCTIONS
 
@@ -377,15 +469,10 @@ internal void InitGlobalGLRendering(){
 
   {/* 1: Shader Loading / Init */}
   {
-    // (Base shader declarations)
+    // (Base shader)
     GlobalGLRenderer.BaseShader = new Shader("../driver/shader.vert", "../driver/shader.frag");
-    // GlobalGLRenderer.BaseShader->Use();
-    // GlobalGLRenderer.BaseShader->SetInt("gameTexture", 0);
-
-    // (Rain shader declarations)
+    // (Rain shader)
     GlobalGLRenderer.RainShader = new Shader("../driver/rain.vert", "../driver/rain.frag");
-    // GlobalGLRenderer.RainShader->Use();
-    // GlobalGLRenderer.RainShader->SetInt("rainTexture", 0)
   }
 
   {/* 2: Base Scene Setup */ }
@@ -426,38 +513,7 @@ internal void InitGlobalGLRendering(){
   
   {/* 3: Rain Scene Setup */}
   {
-    real32 RainVertices[] = {
-      // positions     // texture coords
-      -0.5f, -0.5f,   0.0f, 0.0f,
-      0.5f, -0.5f,   1.0f, 0.0f,
-      0.5f,  0.5f,   1.0f, 1.0f,
-      -0.5f,  0.5f,   0.0f, 1.0f
-    };
-
-    // Generate and bind rain VAO/VBO
-    glGenVertexArrays(1, &GlobalGLRenderer.RainVAO);
-    glGenBuffers(1, &GlobalGLRenderer.RainVBO);
-    glGenBuffers(1, &GlobalGLRenderer.RainInstanceVBO);
-        
-    glBindVertexArray(GlobalGLRenderer.RainVAO);
-        
-    glBindBuffer(GL_ARRAY_BUFFER, GlobalGLRenderer.RainVBO);
-    glBufferData(GL_ARRAY_BUFFER, sizeof(RainVertices), RainVertices, GL_STATIC_DRAW);
-
-    // (Positions)
-    glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(real32), (void*)0);
-    glEnableVertexAttribArray(0);
-    // (Texture coords)
-    glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(real32), (void*)(2 * sizeof(real32)));
-    glEnableVertexAttribArray(1);
-
-    glBindBuffer(GL_ARRAY_BUFFER, GlobalGLRenderer.RainInstanceVBO);
-    glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(real32), (void*)0);  // Position
-    glVertexAttribPointer(3, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(real32), (void*)(2 * sizeof(real32))); // Velocity
-    glEnableVertexAttribArray(2);
-    glEnableVertexAttribArray(3);
-    glVertexAttribDivisor(2, 1);  // Instance rate for position
-    glVertexAttribDivisor(3, 1);  // Instance rate for velocity	
+    GlobalRainSystem.InitGL();
   }
 
   {/* 4: Texture Setup */}
@@ -475,31 +531,11 @@ internal void InitGlobalGLRendering(){
 
     glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, InternalWidth, InternalHeight, 0,
                  GL_RGBA, GL_UNSIGNED_INT_8_8_8_8, GlobalGLRenderer.Pixels);
-    
-    // (B: Rain texture)
-    glGenTextures(1, &GlobalGLRenderer.RainTexture);
-    glBindTexture(GL_TEXTURE_2D, GlobalGLRenderer.RainTexture);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
 
-    /*
-      Their ImplementatioN:
-      const int TEX_SIZE = 32;
-      std::vector<unsigned char> texData(TEX_SIZE * TEX_SIZE, 0);
-      for(int y = 0; y < TEX_SIZE; y++) {
-      for(int x = 0; x < TEX_SIZE; x++) {
-      float dx = (x - TEX_SIZE/2.0f) / (TEX_SIZE/4.0f);
-      float dy = (y - TEX_SIZE/2.0f) / (TEX_SIZE/2.0f);
-      float dist = dx*dx + dy*dy;
-      texData[y*TEX_SIZE + x] = (dist <= 1.0f) ? 255 : 0;
-      }
-      }
-      glTexImage2D(GL_TEXTURE_2D, 0, GL_R8, TEX_SIZE, TEX_SIZE, 0,
-      GL_RED, GL_UNSIGNED_BYTE, texData.data());      
-     */
 
   }
-  
+
+  // TODO: does this work as an end?
   GlobalGLRenderer.BaseShader->Use();
   GlobalGLRenderer.BaseShader->SetInt("gameTexture", 0);
 
@@ -508,12 +544,11 @@ internal void InitGlobalGLRendering(){
   
   glEnable(GL_BLEND);
   glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-  
-  // (Manual blitting for internal texture)
-  // for(int i = 0; i < InternalHeight; ++i){for(int j = 0; j < InternalWidth; ++j){ GlobalGLRenderer.Pixels[IX(i,j)] = Alpha|Blue; }}
-  // for(int i = 0; i < 100; ++i){ GlobalGLRenderer.Pixels[IX(i, 100)] = Alpha|Red|Blue;}
 
-  /// (Enable blending for particle effects. I'd be careful of how this affects the main render)
+  GlobalRainSystem.Init();
+
+  for(int i = 0; i < InternalHeight; ++i){for(int j = 0; j < InternalWidth; ++j){ GlobalGLRenderer.Pixels[IX(i,j)] = Alpha|Blue|Red|Green; }}
+  // for(int i = 0; i < 100; ++i){ GlobalGLRenderer.Pixels[IX(i, 100)] = Alpha|Red|Blue;}
   
 }
 
@@ -540,29 +575,36 @@ internal void Win64DisplayBufferInWindow(HDC DeviceContext, int WindowWidth, int
   
   glClearColor(1.0f, 0.0f, 1.0f, 0.0f); // Pink
   glClear(GL_COLOR_BUFFER_BIT);
-
   glViewport(ViewportX, ViewportY, ViewportWidth, ViewportHeight);
-  // CheckGLError("After viewport");
 
-  GlobalGLRenderer.BaseShader->Use();
-  // CheckGLError("After shader use");
-
-  glActiveTexture(GL_TEXTURE0);
-  glBindTexture(GL_TEXTURE_2D, GlobalGLRenderer.MainTexture);
-
-  // CheckGLError("After bind texture");
-  
-  glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, InternalWidth, InternalHeight,
+  {/* Base Texture Pass */}
+  {
+    GlobalGLRenderer.BaseShader->Use();
+    glActiveTexture(GL_TEXTURE0);
+    glBindTexture(GL_TEXTURE_2D, GlobalGLRenderer.MainTexture);
+    // CheckGLError("After bind texture");
+    glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, InternalWidth, InternalHeight,
                     GL_RGBA, GL_UNSIGNED_INT_8_8_8_8, GlobalGLRenderer.Pixels);
+    // CheckGLError("After texsubimage");
+    glBindVertexArray(GlobalGLRenderer.FrameVAO);
+    // CheckGLError("After bind vao");
+    glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
+  }
+  {/* Rain Pass */}
+  {/* 
+    GlobalGLRenderer.RainShader->Use();
+    CheckGLError("After shader use");
+    glActiveTexture(GL_TEXTURE0);
+    glBindTexture(GL_TEXTURE_2D, GlobalGLRenderer.RainTexture);
+    CheckGLError("After rain texture bind");
+    glBindVertexArray(GlobalGLRenderer.RainVAO);
+    CheckGLError("After rain VAO bind");
+    glDrawArraysInstanced(GL_TRIANGLE_FAN, 0, 4, GlobalRainSystem.ActiveCount);
+    CheckGLError("After rain draw");  */
+  }
 
-  // CheckGLError("After texsubimage");
   
-  glBindVertexArray(GlobalGLRenderer.FrameVAO);
-
-  // CheckGLError("After bind vao");
   
-  glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
-
   // CheckGLError("After draw");
   
   SwapBuffers(DeviceContext);
@@ -619,12 +661,10 @@ LRESULT Win64MainWindowCallback(HWND Window, UINT Message, WPARAM WParam, LPARAM
 /*
 
 TODO: Implement:
-* Win64MainWindowCallback
 * Win64ResizeDIBSection
-* game_input struct (means of storing game input)
-* game_offscreen_buffer struct (means of storing )
+* game_input (struct) (means of storing game input)
+* game_offscreen_buffer (struct) (means of storing )
 * (game memory handling)
-
 
  */
 
@@ -766,7 +806,8 @@ int WINAPI WinMain(HINSTANCE Instance,
 	    else{
 	      // GameUpdateAndRender(&GameMemory, NewInput, &GraphicalBuffer, NULL);
 	    }
-	    
+
+	    GlobalRainSystem.Update();
 	    win64_window_dimension Dimension = GetWindowDimension(Window);
 	    Win64DisplayBufferInWindow(DeviceContext, Dimension.Width, Dimension.Height, &GlobalBackBuffer);
 	 
