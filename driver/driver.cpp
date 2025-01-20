@@ -33,6 +33,8 @@ typedef int32_t bool32;
 // (Used in particle structs)
 global_variable const uint32 InternalWidth = 320;
 global_variable const uint32 InternalHeight = 180;
+// (Used for error checking in struct functions)
+internal void CheckGLError(char* label);
 
 // STRUCTS
 
@@ -129,6 +131,7 @@ struct rain_system {
   };
 
   void InitGL(){
+    
     real32 RainVertices[] = {
       // positions     // texture coords
       -0.5f, -0.5f,   0.0f, 0.0f,
@@ -176,17 +179,14 @@ struct rain_system {
     // (Make texture)
     for(int y = 0; y < TEX_SIZE; y++) {
       for(int x = 0; x < TEX_SIZE; x++) {
-	float dx = (x - TEX_SIZE/2.0f) / (TEX_SIZE/4.0f);
-	float dy = (y - TEX_SIZE/2.0f) / (TEX_SIZE/2.0f);
-	float dist = dx*dx + dy*dy;
-	texData[y*TEX_SIZE + x] = (dist <= 1.0f) ? 255 : 0;
+	texData[y*TEX_SIZE + x] = 255;
       }
     }
         
     glTexImage2D(GL_TEXTURE_2D, 0, GL_R8, TEX_SIZE, TEX_SIZE, 0,
 		 GL_RED, GL_UNSIGNED_BYTE, texData);
     
-  }
+}
   
   void Init(){
     //ActiveCount = MAX_RAINDROPS / 2;
@@ -220,13 +220,13 @@ struct rain_system {
   }
   
   void Update(){
-    for(int i = 0; i < ActiveCount; ++i){
+        for(int i = 0; i < ActiveCount; ++i){
       game_raindrop& Drop = GameRaindrops[i];
       if(!Drop.Active) continue;
       
       // (Move pixel along velocity if defined)
       Drop.PosX += Drop.Velocity * sin(Drop.Angle);;
-      Drop.PosY += -Drop.Velocity * cos(Drop.Angle);
+      Drop.PosY += Drop.Velocity * cos(Drop.Angle);
       // (Angle, Velocity, Size remain constant)
     
       // (Check for ground collision)
@@ -243,7 +243,7 @@ struct rain_system {
 
     // (set random posX (any pixel within viewport))
     Drop.PosX = (real32)(rand() % InternalWidth);
-    Drop.PosY = (real32)(InternalHeight + 10); // TODO: do we need to randomize? e.g. (real32)(InternalHeight + (rand() % 50));
+    Drop.PosY = (real32)(InternalHeight - 10); // TODO: do we need to randomize? e.g. (real32)(InternalHeight + (rand() % 50));
     
     // (set random angle: (4 - 4.5 radians))
     Drop.Angle = 4.0f + (0.5f * ((real32)rand() / RAND_MAX));
@@ -547,7 +547,7 @@ internal void InitGlobalGLRendering(){
 
   GlobalRainSystem.Init();
 
-  for(int i = 0; i < InternalHeight; ++i){for(int j = 0; j < InternalWidth; ++j){ GlobalGLRenderer.Pixels[IX(i,j)] = Alpha|Blue|Red|Green; }}
+  for(int i = 0; i < InternalHeight; ++i){for(int j = 0; j < InternalWidth; ++j){ GlobalGLRenderer.Pixels[IX(i,j)] = Alpha|Blue; }}
   // for(int i = 0; i < 100; ++i){ GlobalGLRenderer.Pixels[IX(i, 100)] = Alpha|Red|Blue;}
   
 }
@@ -582,16 +582,13 @@ internal void Win64DisplayBufferInWindow(HDC DeviceContext, int WindowWidth, int
     GlobalGLRenderer.BaseShader->Use();
     glActiveTexture(GL_TEXTURE0);
     glBindTexture(GL_TEXTURE_2D, GlobalGLRenderer.MainTexture);
-    // CheckGLError("After bind texture");
     glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, InternalWidth, InternalHeight,
                     GL_RGBA, GL_UNSIGNED_INT_8_8_8_8, GlobalGLRenderer.Pixels);
-    // CheckGLError("After texsubimage");
     glBindVertexArray(GlobalGLRenderer.FrameVAO);
-    // CheckGLError("After bind vao");
     glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
   }
   {/* Rain Pass */}
-  {/* 
+  {
     GlobalGLRenderer.RainShader->Use();
     CheckGLError("After shader use");
     glActiveTexture(GL_TEXTURE0);
@@ -600,7 +597,7 @@ internal void Win64DisplayBufferInWindow(HDC DeviceContext, int WindowWidth, int
     glBindVertexArray(GlobalGLRenderer.RainVAO);
     CheckGLError("After rain VAO bind");
     glDrawArraysInstanced(GL_TRIANGLE_FAN, 0, 4, GlobalRainSystem.ActiveCount);
-    CheckGLError("After rain draw");  */
+    CheckGLError("After rain draw");
   }
 
   
