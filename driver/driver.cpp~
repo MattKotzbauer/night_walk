@@ -28,16 +28,31 @@ typedef double real64;
 
 typedef int32_t bool32;
 
-#include "shader.h"
 
 // (Used in particle structs)
+// (Resolution Width, Height)
 global_variable const uint32 InternalWidth = 320;
 global_variable const uint32 InternalHeight = 180;
-// (Used for error checking in struct functions)
+
+// (Internal Display)
+// #define IX(i,j) (((i)*InternalWidth)+(j))
+#define IX(i,j) (i+((j)*InternalHeight))
+
+// (Full Width for game map: used in image.h)
+global_variable const uint32 FullWidth = 720; // TODO: change to final full width of game / determine from full map
+// (Used for error checking in raindrop struct functions)
 internal void CheckGLError(char* label);
 
-// STRUCTS
+struct game_map{
+  uint32* Pixels;
+  int32 Width;
+  // (Height = InternalHeight)
+  int32 XOffset;
+};
+global_variable game_map GlobalGameMap;
 
+// STRUCTS
+#include "shader.h"
 // (Window structs)
 
 struct GLBuffer {
@@ -57,13 +72,16 @@ struct GLBuffer {
   Shader* RainShader;
 };
 global_variable GLBuffer GlobalGLRenderer;
+// (I like putting image.h here, shader.h should also be fine?)
+#include "image.h"
 
-
+// (Pixel dimensions of current window)
 struct win64_window_dimension
 {
   int Width;
   int Height;
 };
+// (Win64 window metadata)
 struct win64_offscreen_buffer
 {
   BITMAPINFO Info;
@@ -73,6 +91,7 @@ struct win64_offscreen_buffer
   int Pitch;
   int BytesPerPixel;
  };
+// (Internal game metadata for window blitting)
 struct game_offscreen_buffer
 {
   int Width;
@@ -116,7 +135,6 @@ struct game_raindrop {
   real32 Size; // (Radius in pixels)
   bool32 Active;
 };
-
 struct rain_system {
   internal const uint32 MAX_RAINDROPS = 1000;
   game_raindrop GameRaindrops[MAX_RAINDROPS];
@@ -209,8 +227,8 @@ struct rain_system {
 
   void UpdateInstanceData(){
     real32 InstanceDataBuffer[MAX_RAINDROPS*4];
-
-        for(int i = 0; i < ActiveCount; ++i){
+    
+    for(int i = 0; i < ActiveCount; ++i){
       const game_raindrop& CurrentDrop = GameRaindrops[i];
       if(!CurrentDrop.Active) continue;
 
@@ -240,7 +258,7 @@ struct rain_system {
       // (Angle, Velocity, Size remain constant)
     
       // (Check for ground collision)
-      if(Drop.PosY < 0 || Drop.PosX < 0 || Drop.PosX > InternalWidth){
+      if(Drop.PosY < 0 || Drop.PosX < 0){
 	// (resetting logic)
 	Reset(Drop);
       }
@@ -254,7 +272,7 @@ struct rain_system {
     // (set random posX (any pixel within viewport))
     real32 x = (real32)(rand() % (InternalHeight + InternalWidth + 20));
     Drop.PosX = x > (InternalWidth + 10) ? (InternalWidth + 10) : x;
-    Drop.PosY = x > (InternalWidth + 10) ? (InternalHeight - x - (InternalWidth + 10)) : (InternalHeight + 10);
+    Drop.PosY = x > (InternalWidth + 10) ?  x - (InternalWidth + 10) : (InternalHeight + 10);
     
     // Drop.PosX = (real32)(rand() % InternalWidth);
     // Drop.PosY = (real32)(InternalHeight - 10); // TODO: do we need to randomize? e.g. (real32)(InternalHeight + (rand() % 50));
@@ -273,7 +291,6 @@ struct rain_system {
   }
   
 };
-
 global_variable rain_system GlobalRainSystem;
 
 // (GLOBALS)
@@ -288,9 +305,6 @@ global_variable real32 sampleRateGlobal;
 
 global_variable bool GlobalRunning;
 global_variable win64_offscreen_buffer GlobalBackBuffer;
-
-// (Internal Display)
-#define IX(i,j) (((i)*InternalWidth)+(j))
 
 global_variable const uint32 Red = (0xFF << 24);
 global_variable const uint32 Green = (0xFF << 16);
@@ -435,6 +449,18 @@ internal void Win64ResizeDIBSection(win64_offscreen_buffer *Buffer, int Width, i
   
 }
 
+// (Load game map into GlobalGLRenderer.Pixels)
+internal void LoadGameMap(){
+  for(int i = 0; i < InternalHeight; ++i){
+    for(int j = 0; j < InternalWidth; ++j){
+      int MapX = i + GlobalGameMap.XOffset;
+      if(MapX >= 0 && MapX < GlobalGameMap.Width){
+	int SrcIndex = IX(i,MapX);
+	int DstIndex = IX(i,j);
+	GlobalGLRenderer.Pixels[DstIndex] = GlobalGameMap.Pixels[SrcIndex];
+    }}}
+}
+
 // (OpenGL Windows Initialization)
 internal void Win64InitOpenGL(HWND Window, HDC WindowDC){
 
@@ -561,7 +587,8 @@ internal void InitGlobalGLRendering(){
 
   GlobalRainSystem.Init();
 
-  for(int i = 0; i < InternalHeight; ++i){for(int j = 0; j < InternalWidth; ++j){ GlobalGLRenderer.Pixels[IX(i,j)] = Alpha|Blue; }}
+  // blue blit (TODO: replace with game screen blit)
+  // for(int i = 0; i < InternalHeight; ++i){for(int j = 0; j < InternalWidth; ++j){ GlobalGLRenderer.Pixels[IX(i,j)] = Alpha|Blue; }}
   // for(int i = 0; i < 100; ++i){ GlobalGLRenderer.Pixels[IX(i, 100)] = Alpha|Red|Blue;}
   
 }
@@ -586,11 +613,11 @@ internal void Win64DisplayBufferInWindow(HDC DeviceContext, int WindowWidth, int
     ViewportHeight = (int32)(WindowHeight / TargetAspectRatio);
     ViewportY = (WindowHeight - ViewportHeight) / 2;
   }
-  
+
   glClearColor(1.0f, 0.0f, 1.0f, 0.0f); // Pink
   glClear(GL_COLOR_BUFFER_BIT);
   glViewport(ViewportX, ViewportY, ViewportWidth, ViewportHeight);
-
+  
   {/* Base Texture Pass */}
   {
     GlobalGLRenderer.BaseShader->Use();
@@ -726,30 +753,16 @@ int WINAPI WinMain(HINSTANCE Instance,
 	  int32 SoundBufferSize = 48000 * sizeof(int16) * 2;
 	  int16* Samples = (int16*)VirtualAlloc(0, SoundBufferSize, MEM_RESERVE|MEM_COMMIT, PAGE_READWRITE);
 
-	  /* 
-	  // (Game Memory Handling)
-#if HANDMADE_INTERNAL
-	  LPVOID BaseAddress = (LPVOID)Terabytes((uint64)2);
-#else
-	  LPVOID BaseAddress = 0;
-#endif
+	  // (Game map init.)
+	  int32 GameMapWidth = 720;
+	  int32 GameMapSize = InternalHeight * GameMapWidth * sizeof(uint32);
+	  GlobalGameMap.Pixels = (uint32*)VirtualAlloc(0, GameMapSize, MEM_RESERVE|MEM_COMMIT, PAGE_READWRITE);
+	  // (Image loading / game map population)
+	  GlobalGameMap.Width = GameMapWidth;
+	  GlobalGameMap.XOffset = 0;
+	  LoadImageToGameMap(&GlobalGameMap, "../media/sample_scene.png");
 
-	  // Memory allocations
-	  game_memory GameMemory = {};
-	  GameMemory.PermanentStorageSize = Megabytes(64);
-	  GameMemory.TransientStorageSize = Gigabytes(4);
-
-
-	  uint64 TotalSize = GameMemory.PermanentStorageSize + GameMemory.TransientStorageSize;
-
-	  GameMemory.PermanentStorage = (int16*)VirtualAlloc(BaseAddress,
-							     TotalSize, 
-							     MEM_RESERVE|MEM_COMMIT,
-							     PAGE_READWRITE);
-	  GameMemory.TransientStorage = ((uint8*)GameMemory.PermanentStorage + GameMemory.PermanentStorageSize);
-	  // GameMemory.TransientStorage = (int16*)VirtualAlloc(0, GameMemory.TransientStorageSize, MEM_RESERVE|MEM_COMMIT, PAGE_READWRITE);
-	  if(Samples && GameMemory.PermanentStorage && GameMemory.TransientStorage){
-	  */
+	  LoadGameMap();
 	  
 	  game_input Input[2] = {};
 	  game_input* NewInput = &Input[0];

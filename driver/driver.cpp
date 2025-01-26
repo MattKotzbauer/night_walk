@@ -36,8 +36,8 @@ global_variable const uint32 InternalHeight = 180;
 
 // (Internal Display)
 // #define IX(i,j) (((i)*InternalWidth)+(j))
-#define IX(i,j) (i+((j)*InternalHeight))
-
+#define IX(i,j) ((i)+((j)*InternalHeight))
+ 
 // (Full Width for game map: used in image.h)
 global_variable const uint32 FullWidth = 720; // TODO: change to final full width of game / determine from full map
 // (Used for error checking in raindrop struct functions)
@@ -449,6 +449,20 @@ internal void Win64ResizeDIBSection(win64_offscreen_buffer *Buffer, int Width, i
   
 }
 
+// (Load game map into GlobalGLRenderer.Pixels)
+internal void LoadGameMap(){
+  for(int i = 0; i < InternalHeight; ++i){
+    for(int j = 0; j < InternalWidth; ++j){
+      int MapX = j + GlobalGameMap.XOffset;
+      if(MapX >= 0 && MapX < GlobalGameMap.Width){
+	int SrcIndex = IX(i,MapX);
+	// int DstIndex = IX(i,j); // (Column-major)
+	// int DstIndex = (i * InternalWidth) + (j); // (Row-major: upside-down)
+	int DstIndex = ((InternalHeight - i) * InternalWidth) + (j);
+	GlobalGLRenderer.Pixels[DstIndex] = GlobalGameMap.Pixels[SrcIndex];
+    }}}
+}
+
 // (OpenGL Windows Initialization)
 internal void Win64InitOpenGL(HWND Window, HDC WindowDC){
 
@@ -575,7 +589,8 @@ internal void InitGlobalGLRendering(){
 
   GlobalRainSystem.Init();
 
-  for(int i = 0; i < InternalHeight; ++i){for(int j = 0; j < InternalWidth; ++j){ GlobalGLRenderer.Pixels[IX(i,j)] = Alpha|Blue; }}
+  // blue blit (TODO: replace with game screen blit)
+  // for(int i = 0; i < InternalHeight; ++i){for(int j = 0; j < InternalWidth; ++j){ GlobalGLRenderer.Pixels[IX(i,j)] = Alpha|Blue; }}
   // for(int i = 0; i < 100; ++i){ GlobalGLRenderer.Pixels[IX(i, 100)] = Alpha|Red|Blue;}
   
 }
@@ -600,11 +615,11 @@ internal void Win64DisplayBufferInWindow(HDC DeviceContext, int WindowWidth, int
     ViewportHeight = (int32)(WindowHeight / TargetAspectRatio);
     ViewportY = (WindowHeight - ViewportHeight) / 2;
   }
-  
+
   glClearColor(1.0f, 0.0f, 1.0f, 0.0f); // Pink
   glClear(GL_COLOR_BUFFER_BIT);
   glViewport(ViewportX, ViewportY, ViewportWidth, ViewportHeight);
-
+  
   {/* Base Texture Pass */}
   {
     GlobalGLRenderer.BaseShader->Use();
@@ -745,6 +760,11 @@ int WINAPI WinMain(HINSTANCE Instance,
 	  int32 GameMapSize = InternalHeight * GameMapWidth * sizeof(uint32);
 	  GlobalGameMap.Pixels = (uint32*)VirtualAlloc(0, GameMapSize, MEM_RESERVE|MEM_COMMIT, PAGE_READWRITE);
 	  // (Image loading / game map population)
+	  GlobalGameMap.Width = GameMapWidth;
+	  GlobalGameMap.XOffset = 0;
+	  LoadImageToGameMap(&GlobalGameMap, "../media/sample_scene.png");
+
+	  LoadGameMap();
 	  
 	  game_input Input[2] = {};
 	  game_input* NewInput = &Input[0];

@@ -14,8 +14,8 @@ void main() {
     
     // Convert from pixel coordinates to OpenGL coordinates (-1 to 1)
     vec2 normalizedPos = vec2(
-        (pos.x / 320.0) * 2.0 - 1.0,  // Using your InternalWidth
-        (pos.y / 180.0) * 2.0 - 1.0   // Using your InternalHeight
+        (pos.x / 320.0) * 2.0 - 1.0,  // Using InternalWidth
+        (pos.y / 180.0) * 2.0 - 1.0   // Using  InternalHeight
     );
     
     gl_Position = vec4(normalizedPos, 0.0, 1.0);
