@@ -306,10 +306,16 @@ global_variable real32 sampleRateGlobal;
 global_variable bool GlobalRunning;
 global_variable win64_offscreen_buffer GlobalBackBuffer;
 
+// (Colors)
 global_variable const uint32 Red = (0xFF << 24);
 global_variable const uint32 Green = (0xFF << 16);
 global_variable const uint32 Blue = (0xFF << 8);
 global_variable const uint32 Alpha = 0XFF;
+
+// Framerate Control
+global_variable const int TARGET_FPS = 30;
+global_variable const real32 TARGET_SECONDS_PER_FRAME = (1.0f / (real32)TARGET_FPS);
+
 
 // HELPER FUNCTIONS
 
@@ -321,6 +327,11 @@ internal void CheckGLError(char* label){
     sprintf(errorMsg, "OpenGL error at %s: 0x%x\n", label, err);
     OutputDebugStringA(errorMsg);
   }
+}
+
+internal real32 Win64GetSecondsElapsed(LARGE_INTEGER Start, LARGE_INTEGER End, int64 PerfCountFrequency){
+  real32 Result = ((real32)(End.QuadPart - Start.QuadPart) / (real32)PerfCountFrequency);
+  return Result;
 }
 
 // (Gets Current Window Dimensions)
@@ -721,7 +732,9 @@ int WINAPI WinMain(HINSTANCE Instance,
   WindowClass.style = CS_HREDRAW|CS_VREDRAW;
   WindowClass.lpfnWndProc = Win64MainWindowCallback;
   WindowClass.hInstance = Instance; 
-  WindowClass.lpszClassName = "NightWalkWindowClass"; 
+  WindowClass.lpszClassName = "NightWalkWindowClass";
+
+  bool32 SleepIsGranular = (timeBeginPeriod(1) == TIMERR_NOERROR);
 
   LARGE_INTEGER PerfCountFrequencyResult;
   QueryPerformanceFrequency(&PerfCountFrequencyResult);
@@ -840,10 +853,23 @@ int WINAPI WinMain(HINSTANCE Instance,
 	    //++GlobalXOffset;
 
 	    // Time Tracking (QueryPerformanceCounter, rdtsc): 
-	    int64 EndCycleCount = __rdtsc();
 	    LARGE_INTEGER EndCounter;
 	    QueryPerformanceCounter(&EndCounter);	    
 	    
+	    // Sleep until end of frame
+	    real32 SecondsElapsed = Win64GetSecondsElapsed(LastCounter, EndCounter, PerfCountFrequency);
+	    while(SecondsElapsed < TARGET_SECONDS_PER_FRAME){
+	      if(SleepIsGranular){
+		DWORD SleepMS = (DWORD)(1000.0f * (TARGET_SECONDS_PER_FRAME - SecondsElapsed));
+		if(SleepMS > 0){
+		  Sleep(SleepMS);
+		}
+	      }
+	      QueryPerformanceCounter(&EndCounter);
+	      SecondsElapsed = Win64GetSecondsElapsed(LastCounter, EndCounter, PerfCountFrequency);
+	    }
+
+	    int64 EndCycleCount = __rdtsc();
 	    int64 CyclesElapsed = EndCycleCount - LastCycleCount;
 	    int64 CounterElapsed = EndCounter.QuadPart - LastCounter.QuadPart;
 	    LastCounter = EndCounter;
@@ -867,9 +893,10 @@ int WINAPI WinMain(HINSTANCE Instance,
 	    // (end of while(GlobalRunning loop)
 	  }
 
+	  if(SleepIsGranular){ timeEndPeriod(1); }
+
 	  hr = pAudioClientGlobal->Stop();
 	  if(FAILED(hr)){ OutputDebugStringA("stopping of audio client failed"); }
-       
 
 	  // (Memory closing braces)
 	  /* }
@@ -885,8 +912,9 @@ int WINAPI WinMain(HINSTANCE Instance,
     // TODO: RegisterClassA error handling
   }
   
-  
-  return 0;}
+  return 0;
+}
+
 
 
 
