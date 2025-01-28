@@ -37,7 +37,9 @@ global_variable const uint32 InternalHeight = 180;
 // (Internal Display)
 // #define IX(i,j) (((i)*InternalWidth)+(j))
 #define IX(i,j) ((i)+((j)*InternalHeight))
- 
+#define NX(i,j) (((i)*InternalWidth)+(j))
+#define ArrayCount(arr) (sizeof(arr) / sizeof(arr[0]))
+
 // (Full Width for game map: used in image.h)
 global_variable const uint32 FullWidth = 720; // TODO: change to final full width of game / determine from full map
 // (Used for error checking in raindrop struct functions)
@@ -47,7 +49,9 @@ struct game_map{
   uint32* Pixels;
   int32 Width;
   // (Height = InternalHeight)
+  int32 PriorXOffset;
   int32 XOffset;
+  // int32 PlayerOffset; // (dictates where we draw sprite)
 };
 global_variable game_map GlobalGameMap;
 
@@ -316,6 +320,9 @@ global_variable const uint32 Alpha = 0XFF;
 global_variable const int TARGET_FPS = 30;
 global_variable const real32 TARGET_SECONDS_PER_FRAME = (1.0f / (real32)TARGET_FPS);
 
+// (Scroll speed)
+global_variable const real32 SCROLL_SPEED = 1.0f;
+global_variable real32 ScrollOffset = 0;
 
 // HELPER FUNCTIONS
 
@@ -332,6 +339,26 @@ internal void CheckGLError(char* label){
 internal real32 Win64GetSecondsElapsed(LARGE_INTEGER Start, LARGE_INTEGER End, int64 PerfCountFrequency){
   real32 Result = ((real32)(End.QuadPart - Start.QuadPart) / (real32)PerfCountFrequency);
   return Result;
+}
+
+internal void ProcessGameInput(game_input* NewInput, game_input* OldInput){
+
+  NewInput->Left.EndedDown = (GetAsyncKeyState(VK_LEFT) & 0x8000) != 0;
+  NewInput->Right.EndedDown = (GetAsyncKeyState(VK_RIGHT) & 0x8000) != 0;
+
+  // OutputDebugStringA(NewInput->Left.EndedDown ? "Left key DOWN\n" : "Left key UP\n");
+  // NewInput->Right.EndedDown = true;
+  
+  if(NewInput->Left.EndedDown){
+    // ScrollOffset = max(0, ScrollOffset - SCROLL_SPEED)
+    ScrollOffset = (ScrollOffset - SCROLL_SPEED > 0) ? ScrollOffset - SCROLL_SPEED : 0;
+    GlobalGameMap.XOffset = (int32)ScrollOffset;
+  }
+  if(NewInput->Right.EndedDown){
+    // ScrollOffset = min(ScrollOffset + SCROLL_SPEED, GlobalGameMap.Width)
+    ScrollOffset = (ScrollOffset + SCROLL_SPEED < GlobalGameMap.Width) ? ScrollOffset + SCROLL_SPEED : GlobalGameMap.Width;
+    GlobalGameMap.XOffset = (int32)ScrollOffset;
+  }
 }
 
 // (Gets Current Window Dimensions)
@@ -461,7 +488,8 @@ internal void Win64ResizeDIBSection(win64_offscreen_buffer *Buffer, int Width, i
 }
 
 // (Load game map into GlobalGLRenderer.Pixels)
-internal void LoadGameMap(){
+internal void LoadInternalMap(int PriorXOffset){
+  // 1: Game Map: 
   for(int i = 0; i < InternalHeight; ++i){
     for(int j = 0; j < InternalWidth; ++j){
       int MapX = j + GlobalGameMap.XOffset;
@@ -469,10 +497,35 @@ internal void LoadGameMap(){
 	int SrcIndex = IX(i,MapX);
 	// int DstIndex = IX(i,j); // (Column-major)
 	// int DstIndex = (i * InternalWidth) + (j); // (Row-major: upside-down)
-	int DstIndex = ((InternalHeight - i) * InternalWidth) + (j);
+
+	// (WORKING VER.)
+	// int DstIndex = ((InternalHeight - i) * InternalWidth) + (j);
+	int DstIndex = NX((InternalHeight - i), j);
 	GlobalGLRenderer.Pixels[DstIndex] = GlobalGameMap.Pixels[SrcIndex];
     }}}
+  
+  // 2: Player Sprite:
+  int PlayerBottomOffset = 27;
+  int PlayerLeftOffset = 20;
+
+  // int PlayerHeightTEMP = 15;
+  // int PlayerWidthTEMP = 10;
+
+  int PlayerHeightTEMP = 20;
+  int PlayerWidthTEMP = 15;
+  
+  
+  // (temp blit of player square)
+  for(int i = PlayerBottomOffset; i < PlayerBottomOffset + PlayerHeightTEMP; ++i){
+    for(int j = PlayerLeftOffset; j < PlayerLeftOffset + PlayerWidthTEMP; ++j){
+      int DstIndex = NX(i, j);
+      // TODO: bounds checking? lol
+      GlobalGLRenderer.Pixels[DstIndex] = 0xFFFFFFFF;
+    }
+  }
+  
 }
+
 
 // (OpenGL Windows Initialization)
 internal void Win64InitOpenGL(HWND Window, HDC WindowDC){
@@ -775,9 +828,10 @@ int WINAPI WinMain(HINSTANCE Instance,
 	  // (Image loading / game map population)
 	  GlobalGameMap.Width = GameMapWidth;
 	  GlobalGameMap.XOffset = 0;
+	  GlobalGameMap.PriorXOffset = 0;
 	  LoadImageToGameMap(&GlobalGameMap, "../media/sample_scene.png");
 
-	  LoadGameMap();
+	  LoadInternalMap();
 	  
 	  game_input Input[2] = {};
 	  game_input* NewInput = &Input[0];
@@ -790,6 +844,14 @@ int WINAPI WinMain(HINSTANCE Instance,
 	  
 	  GlobalRunning = true;	  
 	  while(GlobalRunning){
+
+	    // (Base map load)
+	    // if(GlobalGameMap.XOffset != GlobalGameMap.PriorXOffset){
+	      // LoadInternalMap();
+	      // GlobalGameMap.PriorXOffset = GlobalGameMap.XOffset;
+	    // }
+	    LoadInternalMap(PriorXOffset);
+	    GlobalGameMap.PriorXOffset = GlobalGameMap.XOffset;
 	 
 	    MSG Message;
 	    
@@ -801,7 +863,10 @@ int WINAPI WinMain(HINSTANCE Instance,
 	      TranslateMessage(&Message);
 	      DispatchMessage(&Message); 
 	    }
-	    
+
+	    // Input handling
+	    ProcessGameInput(NewInput, OldInput);
+
 	    // (Win64 audio padding)
 	    
 	    UINT32 currentPaddingFrames;
