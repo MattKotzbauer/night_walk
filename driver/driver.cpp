@@ -526,7 +526,6 @@ internal void LoadInternalMap(int PriorXOffset){
   
 }
 
-
 // (OpenGL Windows Initialization)
 internal void Win64InitOpenGL(HWND Window, HDC WindowDC){
 
@@ -831,7 +830,7 @@ int WINAPI WinMain(HINSTANCE Instance,
 	  GlobalGameMap.PriorXOffset = 0;
 	  LoadImageToGameMap(&GlobalGameMap, "../media/sample_scene.png");
 
-	  LoadInternalMap();
+	  // LoadInternalMap();
 	  
 	  game_input Input[2] = {};
 	  game_input* NewInput = &Input[0];
@@ -850,7 +849,7 @@ int WINAPI WinMain(HINSTANCE Instance,
 	      // LoadInternalMap();
 	      // GlobalGameMap.PriorXOffset = GlobalGameMap.XOffset;
 	    // }
-	    LoadInternalMap(PriorXOffset);
+	    LoadInternalMap(GlobalGameMap.PriorXOffset);
 	    GlobalGameMap.PriorXOffset = GlobalGameMap.XOffset;
 	 
 	    MSG Message;

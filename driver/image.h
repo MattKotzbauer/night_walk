@@ -19,7 +19,7 @@ internal void LoadImageToGameMap(game_map* GameMap, char* Filename){
                     PixelBuffer[i*4 + 1], 
                     PixelBuffer[i*4 + 2],
                     PixelBuffer[i*4 + 3]);
-            OutputDebugStringA(DebugBuffer);
+		    OutputDebugStringA(DebugBuffer);
         }
         
         // Also print expected values for first pixel as uint32
