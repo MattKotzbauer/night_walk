@@ -35,10 +35,22 @@ global_variable const uint32 InternalWidth = 320;
 global_variable const uint32 InternalHeight = 180;
 
 // (Internal Display)
-// #define IX(i,j) (((i)*InternalWidth)+(j))
+// (Internal translation: column-major)
 #define IX(i,j) ((i)+((j)*InternalHeight))
-#define NX(i,j) (((i)*InternalWidth)+(j))
+// (OpenGL translation: row-major)
+#define OX(i,j) (((i)*InternalWidth)+(j))
 #define ArrayCount(arr) (sizeof(arr) / sizeof(arr[0]))
+
+// TODO: refactor for differently-sized sprites
+global_variable const uint32 SpriteWidth = 15;
+global_variable const uint32 SpriteHeight = 20;
+global_variable const uint32 SpritePitch = 10; // (Probably won't have to use)
+global_variable const uint32 SpriteMapWidth = 75;
+global_variable const uint32 SpriteMapHeight = 20;
+
+// [(i % SpritePitch) * SpriteWidth, (i / SpritePitch) * SpriteHeight]
+// #define SpritePosition(i) OX((),())
+// #define SpritePosition(i) [(((i)%SpritePitch) * SpriteWidth), (((i)/SpritePitch)*SpriteHeight)]
 
 // (Full Width for game map: used in image.h)
 global_variable const uint32 FullWidth = 720; // TODO: change to final full width of game / determine from full map
@@ -55,6 +67,14 @@ struct game_map{
 };
 global_variable game_map GlobalGameMap;
 
+
+struct sprite_map{
+  uint32* Pixels;
+  // int32 MapWidth;
+  // int32 MapHeight;
+};
+global_variable sprite_map GlobalSpriteMap;
+  
 // STRUCTS
 #include "shader.h"
 // (Window structs)
@@ -489,22 +509,18 @@ internal void Win64ResizeDIBSection(win64_offscreen_buffer *Buffer, int Width, i
 
 // (Load game map into GlobalGLRenderer.Pixels)
 internal void LoadInternalMap(int PriorXOffset){
-  // 1: Game Map: 
+  // 1: Game Map (Column-Major): 
   for(int i = 0; i < InternalHeight; ++i){
     for(int j = 0; j < InternalWidth; ++j){
-      int MapX = j + GlobalGameMap.XOffset;
-      if(MapX >= 0 && MapX < GlobalGameMap.Width){
-	int SrcIndex = IX(i,MapX);
-	// int DstIndex = IX(i,j); // (Column-major)
-	// int DstIndex = (i * InternalWidth) + (j); // (Row-major: upside-down)
-
-	// (WORKING VER.)
+      int MapJ = j + GlobalGameMap.XOffset;
+      if(MapJ >= 0 && MapJ < GlobalGameMap.Width){
+	int SrcIndex = IX(i,MapJ);
 	// int DstIndex = ((InternalHeight - i) * InternalWidth) + (j);
-	int DstIndex = NX((InternalHeight - i), j);
+	int DstIndex = OX((InternalHeight - i), j);
 	GlobalGLRenderer.Pixels[DstIndex] = GlobalGameMap.Pixels[SrcIndex];
     }}}
   
-  // 2: Player Sprite:
+  // 2: Player Sprite (Row-Major):
   int PlayerBottomOffset = 27;
   int PlayerLeftOffset = 20;
 
@@ -513,16 +529,51 @@ internal void LoadInternalMap(int PriorXOffset){
 
   int PlayerHeightTEMP = 20;
   int PlayerWidthTEMP = 15;
+
+  // (dictates frame of animation)
+  int SpriteIndex = 1;
+
+  int SpriteStartY = (SpriteIndex / SpritePitch) * SpriteHeight;
+  int SpriteStartX = (SpriteIndex % SpritePitch) * SpriteWidth;
+  // int32 PlayerBase = SpritePosition(0); // (should return 0)
+
   
-  
-  // (temp blit of player square)
-  for(int i = PlayerBottomOffset; i < PlayerBottomOffset + PlayerHeightTEMP; ++i){
-    for(int j = PlayerLeftOffset; j < PlayerLeftOffset + PlayerWidthTEMP; ++j){
-      int DstIndex = NX(i, j);
-      // TODO: bounds checking? lol
-      GlobalGLRenderer.Pixels[DstIndex] = 0xFFFFFFFF;
+  for(int i = 0; i < SpriteHeight; ++i){
+    for(int j = 0; j < SpriteWidth; ++j){
+      // TODO: (fix logic on this)
+      // int DstIndex = OX(i,j);      int SrcIndex = (() * Sprite )
+      int SrcIndex = ((SpriteStartY + i) * SpriteMapWidth) + (SpriteStartX + j);
+      // int DstIndex = OX(i,j); // TODO: adjust for player position, also invert
+      // int DstIndex = OX((InternalHeight - (PlayerBottomOffset + i)), (PlayerLeftOffset + j));
+      int DstIndex = OX((PlayerBottomOffset + i), (PlayerLeftOffset + j));
+      // TODO: test opacity value of pixel
+      GlobalGLRenderer.Pixels[DstIndex] = GlobalSpriteMap.Pixels[SrcIndex];
     }
   }
+  
+
+  /*
+  for(int i = SpriteStartY; i < SpriteStartY + SpriteHeight; ++i){
+    for(int j = SpriteStartX; j < SpriteStartX + SpriteWidth; ++j){
+      // TODO: (fix logic on this)
+      // int DstIndex = OX(i,j);      int SrcIndex = (() * Sprite )
+      int SrcIndex = (i * SpriteMapWidth) + j;
+      // int DstIndex = OX(i,j); // TODO: adjust for player position, also invert
+      int DstIndex = OX((InternalHeight - i), j);
+      // TODO: test opacity value of pixel
+      GlobalGLRenderer.Pixels[DstIndex] = GlobalSpriteMap.Pixels[SrcIndex];
+    }
+  }
+  */
+  
+  // (temp blit of player square)
+  // for(int i = PlayerBottomOffset; i < PlayerBottomOffset + PlayerHeightTEMP; ++i){
+    // for(int j = PlayerLeftOffset; j < PlayerLeftOffset + PlayerWidthTEMP; ++j){
+      // int DstIndex = OX(i,j);
+      // TODO: bounds checking? lol
+      // GlobalGLRenderer.Pixels[DstIndex] = 0xFFFFFFFF;
+    // }
+  // }
   
 }
 
@@ -824,11 +875,15 @@ int WINAPI WinMain(HINSTANCE Instance,
 	  int32 GameMapWidth = 720;
 	  int32 GameMapSize = InternalHeight * GameMapWidth * sizeof(uint32);
 	  GlobalGameMap.Pixels = (uint32*)VirtualAlloc(0, GameMapSize, MEM_RESERVE|MEM_COMMIT, PAGE_READWRITE);
+	  // (Sprite map init.)
+	  int32 SpriteMapSize = SpriteMapWidth * SpriteMapHeight * sizeof(uint32);
+	  GlobalSpriteMap.Pixels = (uint32*)VirtualAlloc(0, SpriteMapSize, MEM_RESERVE|MEM_COMMIT, PAGE_READWRITE);
 	  // (Image loading / game map population)
 	  GlobalGameMap.Width = GameMapWidth;
 	  GlobalGameMap.XOffset = 0;
 	  GlobalGameMap.PriorXOffset = 0;
-	  LoadImageToGameMap(&GlobalGameMap, "../media/sample_scene.png");
+	  LoadImageToGameMap(&GlobalGameMap, "../media/Scene1.png");
+	  LoadSpriteMap(&GlobalSpriteMap, "../media/Anim1.png");
 
 	  // LoadInternalMap();
 	  
