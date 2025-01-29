@@ -78,6 +78,24 @@ global_variable sprite_map GlobalSpriteMap;
 // STRUCTS
 #include "shader.h"
 // (Window structs)
+/*
+struct player_anim{
+int32 StartFrame; // (first frame of animation)
+int32 EndFrame; // (last frame of animatioN)
+int32 Direction; // (is it reversed?)
+}
+ */
+struct player_state{
+  int32 AnimState = 0; // 0 = idle, 1 = walk
+
+  // (Walk animation metadata)
+  int32 WalkStart = 1;
+  int32 WalkEnd = 5;
+  int32 WalkDirection = 1;
+
+  bool32 PlayerReversed = false;  
+};
+global_variable player_state GlobalPlayerState;
 
 struct GLBuffer {
   // (Base rendering resources)
@@ -373,11 +391,13 @@ internal void ProcessGameInput(game_input* NewInput, game_input* OldInput){
     // ScrollOffset = max(0, ScrollOffset - SCROLL_SPEED)
     ScrollOffset = (ScrollOffset - SCROLL_SPEED > 0) ? ScrollOffset - SCROLL_SPEED : 0;
     GlobalGameMap.XOffset = (int32)ScrollOffset;
+    if(!GlobalPlayerState.PlayerReversed){GlobalPlayerState.PlayerReversed = true;}
   }
   if(NewInput->Right.EndedDown){
     // ScrollOffset = min(ScrollOffset + SCROLL_SPEED, GlobalGameMap.Width)
     ScrollOffset = (ScrollOffset + SCROLL_SPEED < GlobalGameMap.Width) ? ScrollOffset + SCROLL_SPEED : GlobalGameMap.Width;
     GlobalGameMap.XOffset = (int32)ScrollOffset;
+    if(GlobalPlayerState.PlayerReversed){GlobalPlayerState.PlayerReversed = false;}
   }
 }
 
@@ -531,7 +551,7 @@ internal void LoadInternalMap(int PriorXOffset){
   int PlayerWidthTEMP = 15;
 
   // (dictates frame of animation)
-  int SpriteIndex = 1;
+  int SpriteIndex = 4;
 
   int SpriteStartY = (SpriteIndex / SpritePitch) * SpriteHeight;
   int SpriteStartX = (SpriteIndex % SpritePitch) * SpriteWidth;
@@ -542,12 +562,24 @@ internal void LoadInternalMap(int PriorXOffset){
     for(int j = 0; j < SpriteWidth; ++j){
       // TODO: (fix logic on this)
       // int DstIndex = OX(i,j);      int SrcIndex = (() * Sprite )
+      
       int SrcIndex = ((SpriteStartY + i) * SpriteMapWidth) + (SpriteStartX + j);
-      // int DstIndex = OX(i,j); // TODO: adjust for player position, also invert
-      // int DstIndex = OX((InternalHeight - (PlayerBottomOffset + i)), (PlayerLeftOffset + j));
-      int DstIndex = OX((PlayerBottomOffset + i), (PlayerLeftOffset + j));
-      // TODO: test opacity value of pixel
-      GlobalGLRenderer.Pixels[DstIndex] = GlobalSpriteMap.Pixels[SrcIndex];
+      if(GlobalSpriteMap.Pixels[SrcIndex] & Alpha != 0){
+	// int DstIndex = OX((InternalHeight - (PlayerBottomOffset + i)), (PlayerLeftOffset + j));
+	// int DstIndex = OX((PlayerBottomOffset + i), (PlayerLeftOffset + j));
+	// int DstIndex = OX(InternalHeight - (PlayerBottomOffset - SpriteHeight) - i, (PlayerLeftOffset + j));
+	int DstIndex;
+	if(GlobalPlayerState.PlayerReversed){
+	  DstIndex = OX(((PlayerBottomOffset + SpriteHeight) - i), (PlayerLeftOffset + j));
+	}
+	else{
+	  DstIndex = OX(((PlayerBottomOffset + SpriteHeight) - i), (PlayerLeftOffset + j));
+	}
+	
+	// TODO: test opacity value of pixel
+	GlobalGLRenderer.Pixels[DstIndex] = GlobalSpriteMap.Pixels[SrcIndex];
+	
+      }
     }
   }
   
