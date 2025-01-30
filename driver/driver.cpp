@@ -59,6 +59,7 @@ internal void CheckGLError(char* label);
 
 struct game_map{
   uint32* Pixels;
+  uint32* Angles; // (Angles provided by normal map)
   int32 Width;
   // (Height = InternalHeight)
   int32 PriorXOffset;
@@ -74,7 +75,8 @@ struct sprite_map{
   // int32 MapHeight;
 };
 global_variable sprite_map GlobalSpriteMap;
-  
+
+
 // STRUCTS
 #include "shader.h"
 // (Window structs)
@@ -320,8 +322,9 @@ struct rain_system {
     // Drop.PosY = (real32)(InternalHeight - 10); // TODO: do we need to randomize? e.g. (real32)(InternalHeight + (rand() % 50));
     
     // (set random angle: (4 - 4.5 radians))
-    Drop.Angle = 4.0f + (0.5f * ((real32)rand() / RAND_MAX));
-
+    // Drop.Angle = 4.0f + (0.5f * ((real32)rand() / RAND_MAX));
+    Drop.Angle = 3.5f + (0.5f * ((real32)rand() / RAND_MAX));
+    
     // (set random velocity: (3 - 5))
     Drop.Velocity = 3.0f + (2.0f * ((real32)rand() / RAND_MAX));
 

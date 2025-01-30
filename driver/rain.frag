@@ -11,15 +11,13 @@ void main() {
     // Basic raindrop color
     // (Alpha is last element in vec4, end alpha may be more like .5-.6, their recommendation is .6)
     vec4 baseColor = vec4(0.8, 0.8, 0.9, 0.8);
-    // (Debug pure white)
-    // vec4 baseColor = vec4(1.0, 1.0, 1.0, 1.0);
     
     // Sample the raindrop texture
     float alpha = texture(rainTexture, TexCoord).r;
     
     // (Optional: velocity-based motion-blur)
-    // float stretch = length(Velocity) * 0.01;
-    // alpha *= 1.0 + stretch;
+    float stretch = length(Velocity) * 0.01;
+    alpha *= 1.0 + stretch;
     
     FragColor = baseColor * alpha;
 }
