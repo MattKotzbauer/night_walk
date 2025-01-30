@@ -107,6 +107,7 @@ struct GLBuffer {
   GLuint FrameEBO;
   Shader* BaseShader;
   uint32* Pixels;
+  uint32* Angles;
   
   // (Rain rendering)
   GLuint RainVAO;
@@ -541,6 +542,7 @@ internal void LoadInternalMap(int PriorXOffset){
 	// int DstIndex = ((InternalHeight - i) * InternalWidth) + (j);
 	int DstIndex = OX((InternalHeight - i), j);
 	GlobalGLRenderer.Pixels[DstIndex] = GlobalGameMap.Pixels[SrcIndex];
+	GlobalGLRenderer.Angles[DstIndex] = GlobalGameMap.Angles[SrcIndex];
     }}}
   
   // 2: Player Sprite (Row-Major):
@@ -585,30 +587,6 @@ internal void LoadInternalMap(int PriorXOffset){
       }
     }
   }
-  
-
-  /*
-  for(int i = SpriteStartY; i < SpriteStartY + SpriteHeight; ++i){
-    for(int j = SpriteStartX; j < SpriteStartX + SpriteWidth; ++j){
-      // TODO: (fix logic on this)
-      // int DstIndex = OX(i,j);      int SrcIndex = (() * Sprite )
-      int SrcIndex = (i * SpriteMapWidth) + j;
-      // int DstIndex = OX(i,j); // TODO: adjust for player position, also invert
-      int DstIndex = OX((InternalHeight - i), j);
-      // TODO: test opacity value of pixel
-      GlobalGLRenderer.Pixels[DstIndex] = GlobalSpriteMap.Pixels[SrcIndex];
-    }
-  }
-  */
-  
-  // (temp blit of player square)
-  // for(int i = PlayerBottomOffset; i < PlayerBottomOffset + PlayerHeightTEMP; ++i){
-    // for(int j = PlayerLeftOffset; j < PlayerLeftOffset + PlayerWidthTEMP; ++j){
-      // int DstIndex = OX(i,j);
-      // TODO: bounds checking? lol
-      // GlobalGLRenderer.Pixels[DstIndex] = 0xFFFFFFFF;
-    // }
-  // }
   
 }
 
@@ -719,6 +697,11 @@ internal void InitGlobalGLRendering(){
 						    sizeof(uint32) * InternalWidth * InternalHeight,
 						    MEM_RESERVE|MEM_COMMIT,
 						    PAGE_READWRITE);
+    GlobalGLRenderer.Angles = (uint32*)VirtualAlloc(0,
+						    sizeof(uint32) * InternalWidth * InternalHeight,
+						    MEM_RESERVE|MEM_COMMIT,
+						    PAGE_READWRITE);
+
 
     glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, InternalWidth, InternalHeight, 0,
                  GL_RGBA, GL_UNSIGNED_INT_8_8_8_8, GlobalGLRenderer.Pixels);
@@ -910,6 +893,7 @@ int WINAPI WinMain(HINSTANCE Instance,
 	  int32 GameMapWidth = 720;
 	  int32 GameMapSize = InternalHeight * GameMapWidth * sizeof(uint32);
 	  GlobalGameMap.Pixels = (uint32*)VirtualAlloc(0, GameMapSize, MEM_RESERVE|MEM_COMMIT, PAGE_READWRITE);
+	  GlobalGameMap.Angles = (uint32*)VirtualAlloc(0, GameMapSize, MEM_RESERVE|MEM_COMMIT, PAGE_READWRITE);
 	  // (Sprite map init.)
 	  int32 SpriteMapSize = SpriteMapWidth * SpriteMapHeight * sizeof(uint32);
 	  GlobalSpriteMap.Pixels = (uint32*)VirtualAlloc(0, SpriteMapSize, MEM_RESERVE|MEM_COMMIT, PAGE_READWRITE);

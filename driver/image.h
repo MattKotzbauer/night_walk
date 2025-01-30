@@ -70,7 +70,7 @@ internal void LoadNormalMap(game_map* GameMap, char* Filename){
 	  
 	  GameMap->Angles[DstIndex] = CurrentAngle;
 	}}
-x    }
+    }
     stbi_image_free(ValueBuffer);
   }
   
