@@ -27,22 +27,31 @@ void main(){
   vec4 baseColor = texture(gameTexture, TexCoord);
   vec4 angleData = texture(angleTexture, TexCoord);
 
-  // TEMP debugging code
-  // if(angleData.a == 0u){
-    // FragColor = baseColor;
-    // FragColor = vec4(0.0, 0.0, 0.0, 0.0);
-    // return;  }
+  if(angleData.a == 0u){ FragColor = baseColor; return; }  
+
+  /* 
+  if(angleData.a == 0u){
+        vec3 finalColor = baseColor.rgb;
+        
+        // Simple distance-based lighting for surfaces without normals
+        for(int i = 0; i < numActiveLights; ++i) {
+            vec2 lightDir = lights[i].position - FragPos;
+            float distance = length(lightDir);
+            
+            if(distance > lights[i].radius) { continue; }
+            
+            // Simple radial attenuation without normal calculations
+            float attenuation = 1.0 - smoothstep(0.0, lights[i].radius, distance);
+            finalColor += baseColor.rgb * lights[i].color * lights[i].intensity * .* attenuation;
+        }
+        
+        finalColor = min(finalColor, vec3(1.0));
+        FragColor = vec4(finalColor, baseColor.a);
+        return;
+	}*/
 
   float surfaceAngleRaw = (angleData.r + angleData.g) * 255.0;
-    // float surfaceAngleRaw = (angleData.r + angleData.g) * 255.0;
-    // DEBUG: Map angle 0-360 to red channel 0-1
-    // FragColor = vec4(surfaceAngleRaw/360.0, 0.0, 0.0, 1.0);
-    // return;
 
-  // FragColor = angleData;
-  // FragColor = vec4(angleData.r, angleData.g, 0.0, 1.0);
-  // return;
-    
   // Convert stored angle to direction vector
   float angleRadians = radians(surfaceAngleRaw);
   vec2 surfaceNormal = vec2(cos(angleRadians), sin(angleRadians));
