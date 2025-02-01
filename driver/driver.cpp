@@ -591,8 +591,26 @@ internal void Win64ResizeDIBSection(win64_offscreen_buffer *Buffer, int Width, i
   
 }
 
+internal void LoadLights(){
+  for(int i = 0; i < InternalHeight; ++i){
+    for(int j = 0; j < InternalWidth; ++j){
+      int TrIndex = OX((InternalHeight - i), j);
+      if((GlobalGLRenderer.Angles[TrIndex] & 0xFF) == 254){
+	  OutputDebugStringA("Trying to add light \n\n\n");
+	  // (add light)
+	  real32 ScreenX = (real32)j;
+	  real32 ScreenY = (real32)(InternalHeight - i);
+	  GlobalLightingSystem.AddLight(ScreenX, ScreenY,
+					1.0f, 0.8f, 0.6f, /* (R, G, B) */
+					1.0f, 100.0f /* (Intensity, Radius) */
+					); // TODO: encode more info into the normal map? e.g. intensity, radius	
+      }
+    }
+  }
+}
+
 // (Load game map into GlobalGLRenderer.Pixels)
-internal void LoadInternalMap(int PriorXOffset){
+internal void LoadInternalMap(){
   // 1: Game Map (Column-Major): 
   for(int i = 0; i < InternalHeight; ++i){
     for(int j = 0; j < InternalWidth; ++j){
@@ -603,14 +621,12 @@ internal void LoadInternalMap(int PriorXOffset){
 	int DstIndex = OX((InternalHeight - i), j);
 	GlobalGLRenderer.Pixels[DstIndex] = GlobalGameMap.Pixels[SrcIndex];
 	GlobalGLRenderer.Angles[DstIndex] = GlobalGameMap.Angles[SrcIndex];
+	// TODO: if alpha channel of GlobalGLRenderer.Angles[DstIndex] = 254, add light in pixel position
     }}}
   
   // 2: Player Sprite (Row-Major):
   int PlayerBottomOffset = 27;
   int PlayerLeftOffset = 20;
-
-  // int PlayerHeightTEMP = 15;
-  // int PlayerWidthTEMP = 10;
 
   int PlayerHeightTEMP = 20;
   int PlayerWidthTEMP = 15;
@@ -620,8 +636,8 @@ internal void LoadInternalMap(int PriorXOffset){
 
   int SpriteStartY = (SpriteIndex / SpritePitch) * SpriteHeight;
   int SpriteStartX = (SpriteIndex % SpritePitch) * SpriteWidth;
-  // int32 PlayerBase = SpritePosition(0); // (should return 0)
 
+  // TODO: if normal map index is 0, we consider it foreground
   
   for(int i = 0; i < SpriteHeight; ++i){
     for(int j = 0; j < SpriteWidth; ++j){
@@ -652,7 +668,6 @@ internal void LoadInternalMap(int PriorXOffset){
 
 // (OpenGL Windows Initialization)
 internal void Win64InitOpenGL(HWND Window, HDC WindowDC){
-
   // HDC WindowDC = GetDC(Window); 
   
   PIXELFORMATDESCRIPTOR DesiredPixelFormat = {};
@@ -704,13 +719,14 @@ internal void InitGlobalGLRendering(){
     GlobalGLRenderer.RainShader = new Shader("../driver/rain.vert", "../driver/rain.frag");
 
     // CURR TEST:
-    GlobalLightingSystem.ActiveLightCount = 0;    
+    GlobalLightingSystem.ActiveLightCount = 0;
+    /* 
     GlobalLightingSystem.AddLight(InternalWidth / 2.0f, InternalHeight / 2.0f,
 				  1.0f, .8f, .6f, 1.0f, 100.0f
 				  );
         GlobalLightingSystem.AddLight(InternalWidth / 4.0f, InternalHeight / 3.0f,
 				  1.0f, .8f, .6f, 5.0f, 200.0f
-				  );
+				  ); */
   }
 
   {/* 2: Base Scene Setup */ }
@@ -825,7 +841,7 @@ internal void InitGlobalGLRendering(){
 // (OpenGL-Based Screen Blitting)
 internal void Win64DisplayBufferInWindow(HDC DeviceContext, int WindowWidth, int WindowHeight, win64_offscreen_buffer *Buffer){
 
-      real32 TargetAspectRatio = (real32)InternalWidth / (real32)InternalHeight;
+  real32 TargetAspectRatio = (real32)InternalWidth / (real32)InternalHeight;
   real32 WindowAspectRatio = (real32)WindowWidth / (real32)WindowHeight;
 
   int32 ViewportX = 0;
@@ -1010,7 +1026,8 @@ int WINAPI WinMain(HINSTANCE Instance,
 	  LoadNormalMap(&GlobalGameMap, "../media/NormalMap1.png");
 	  LoadSpriteMap(&GlobalSpriteMap, "../media/Anim1.png");
 
-	  // LoadInternalMap();
+	  LoadInternalMap();
+	  LoadLights();
 	  
 	  game_input Input[2] = {};
 	  game_input* NewInput = &Input[0];
@@ -1029,7 +1046,7 @@ int WINAPI WinMain(HINSTANCE Instance,
 	      // LoadInternalMap();
 	      // GlobalGameMap.PriorXOffset = GlobalGameMap.XOffset;
 	    // }
-	    LoadInternalMap(GlobalGameMap.PriorXOffset);
+	    LoadInternalMap();
 	    GlobalGameMap.PriorXOffset = GlobalGameMap.XOffset;
 	 
 	    MSG Message;

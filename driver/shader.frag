@@ -28,7 +28,9 @@ void main(){
   vec4 angleData = texture(angleTexture, TexCoord);
 
   if(angleData.a == 0u){ FragColor = baseColor; return; }  
-
+  // FragColor = angleData;
+  // return;
+  
   /* 
   if(angleData.a == 0u){
         vec3 finalColor = baseColor.rgb;
