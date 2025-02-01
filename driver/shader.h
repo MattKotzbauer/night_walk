@@ -124,6 +124,15 @@ struct Shader{
   void SetFloat(const char* Name, float Value) {
     glUniform1f(glGetUniformLocation(ID, Name), Value);
   }
+
+  void SetVec2(const char* Name, float x, float y) {
+    glUniform2f(glGetUniformLocation(ID, Name), x, y);
+  }
+
+  void SetVec3(const char* Name, float x, float y, float z) {
+    glUniform3f(glGetUniformLocation(ID, Name), x, y, z);
+  }
+
   
   
 }; 

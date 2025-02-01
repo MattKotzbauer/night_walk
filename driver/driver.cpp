@@ -107,6 +107,9 @@ struct GLBuffer {
   GLuint FrameEBO;
   Shader* BaseShader;
   uint32* Pixels;
+
+  // (Normal map resources)
+  GLuint AngleTexture;
   uint32* Angles;
   
   // (Rain rendering)
@@ -118,6 +121,62 @@ struct GLBuffer {
 };
 global_variable GLBuffer GlobalGLRenderer;
 // (I like putting image.h here, shader.h should also be fine?)
+
+struct light_source{
+  real32 PosX, PosY;
+  real32 R, G, B;
+  real32 Intensity;
+  real32 Radius;
+  bool32 Active;
+};
+struct lighting_system{
+  static const int MAX_LIGHTS = 8;
+  light_source Lights[MAX_LIGHTS];
+  int ActiveLightCount;
+
+  void AddLight(real32 PosX, real32 PosY, real32 R, real32 G,
+	       real32 B, real32 Intensity, real32 Radius){
+    if(ActiveLightCount >= MAX_LIGHTS){ return; }
+    int idx = ActiveLightCount++;
+
+    // (Copy aspects)
+    Lights[idx].PosX = PosX;
+    Lights[idx].PosY = PosY;
+    Lights[idx].R = R;
+    Lights[idx].G = G;
+    Lights[idx].B = B;
+    Lights[idx].Intensity = Intensity;
+    Lights[idx].Radius = Radius;
+    Lights[idx].Active = true;
+  }
+  
+  void UpdateLightUniforms(Shader* LightShader){
+    // LightShader->Use();
+
+    LightShader->SetInt("numActiveLights", ActiveLightCount);
+    
+    for(int i = 0; i < ActiveLightCount; ++i){
+      if(!Lights[i].Active){ continue; }
+
+      char buf[64];
+      // OutputDebugStringA("\n\n");
+      sprintf(buf, "lights[%d].position", i);
+      LightShader->SetVec2(buf, Lights[i].PosX, Lights[i].PosY);
+      sprintf(buf, "lights[%d].color", i); 
+      LightShader->SetVec3(buf, Lights[i].R, Lights[i].G, Lights[i].B);
+      sprintf(buf, "lights[%d].intensity", i);
+      LightShader->SetFloat(buf, Lights[i].Intensity);      
+      sprintf(buf, "lights[%d].radius", i);
+      LightShader->SetFloat(buf, Lights[i].Radius);
+    }
+
+    LightShader->SetFloat("ambientStrength", 0.2f);
+    
+  }
+};
+global_variable lighting_system GlobalLightingSystem;
+
+
 #include "image.h"
 
 // (Pixel dimensions of current window)
@@ -642,6 +701,15 @@ internal void InitGlobalGLRendering(){
     GlobalGLRenderer.BaseShader = new Shader("../driver/shader.vert", "../driver/shader.frag");
     // (Rain shader)
     GlobalGLRenderer.RainShader = new Shader("../driver/rain.vert", "../driver/rain.frag");
+
+    // CURR TEST:
+    GlobalLightingSystem.ActiveLightCount = 0;    
+    GlobalLightingSystem.AddLight(InternalWidth / 2.0f, InternalHeight / 2.0f,
+				  1.0f, .8f, .6f, 1.0f, 100.0f
+				  );
+        GlobalLightingSystem.AddLight(InternalWidth / 4.0f, InternalHeight / 3.0f,
+				  1.0f, .8f, .6f, 1.0f, 100.0f
+				  );
   }
 
   {/* 2: Base Scene Setup */ }
@@ -683,6 +751,7 @@ internal void InitGlobalGLRendering(){
   {/* 3: Rain Scene Setup */}
   {
     GlobalRainSystem.InitGL();
+    GlobalRainSystem.Init();
   }
 
   {/* 4: Texture Setup */}
@@ -693,6 +762,14 @@ internal void InitGlobalGLRendering(){
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST); // (min filter)
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST); // (mag filter)
 
+    // (B: Angle textures)
+    glGenTextures(1, &GlobalGLRenderer.AngleTexture);
+    glActiveTexture(GL_TEXTURE1);
+    glBindTexture(GL_TEXTURE_2D, GlobalGLRenderer.AngleTexture);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+    
+    
     GlobalGLRenderer.Pixels = (uint32*)VirtualAlloc(0,
 						    sizeof(uint32) * InternalWidth * InternalHeight,
 						    MEM_RESERVE|MEM_COMMIT,
@@ -702,24 +779,39 @@ internal void InitGlobalGLRendering(){
 						    MEM_RESERVE|MEM_COMMIT,
 						    PAGE_READWRITE);
 
-
+    
+    // (Initialize textures)
+    glActiveTexture(GL_TEXTURE0);
+    glBindTexture(GL_TEXTURE_2D, GlobalGLRenderer.MainTexture);
     glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, InternalWidth, InternalHeight, 0,
                  GL_RGBA, GL_UNSIGNED_INT_8_8_8_8, GlobalGLRenderer.Pixels);
 
 
+    glActiveTexture(GL_TEXTURE1);
+    glBindTexture(GL_TEXTURE_2D, GlobalGLRenderer.AngleTexture);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, InternalWidth, InternalHeight, 0,
+                 GL_RGBA, GL_UNSIGNED_INT_8_8_8_8, GlobalGLRenderer.Angles);
+
+    
   }
+
 
   // TODO: does this work as an end?
   GlobalGLRenderer.BaseShader->Use();
-  GlobalGLRenderer.BaseShader->SetInt("gameTexture", 0);
 
+  GlobalGLRenderer.BaseShader->SetFloat("screenWidth", (float)InternalWidth);
+  GlobalGLRenderer.BaseShader->SetFloat("screenHeight", (float)InternalHeight);
+  
+  GlobalGLRenderer.BaseShader->SetInt("gameTexture", 0);
+  GlobalGLRenderer.BaseShader->SetInt("angleTexture", 1);
+  
   GlobalGLRenderer.RainShader->Use();
   GlobalGLRenderer.RainShader->SetInt("rainTexture", 0);
   
   glEnable(GL_BLEND);
   glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 
-  GlobalRainSystem.Init();
+  // GlobalRainSystem.Init();
 
   // blue blit (TODO: replace with game screen blit)
   // for(int i = 0; i < InternalHeight; ++i){for(int j = 0; j < InternalWidth; ++j){ GlobalGLRenderer.Pixels[IX(i,j)] = Alpha|Blue; }}
@@ -755,12 +847,25 @@ internal void Win64DisplayBufferInWindow(HDC DeviceContext, int WindowWidth, int
   {/* Base Texture Pass */}
   {
     GlobalGLRenderer.BaseShader->Use();
+
+    // THIS IS THE LINE
+    GlobalLightingSystem.UpdateLightUniforms(GlobalGLRenderer.BaseShader);
+
+    // (A: Bind main texture)
     glActiveTexture(GL_TEXTURE0);
     glBindTexture(GL_TEXTURE_2D, GlobalGLRenderer.MainTexture);
     glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, InternalWidth, InternalHeight,
                     GL_RGBA, GL_UNSIGNED_INT_8_8_8_8, GlobalGLRenderer.Pixels);
+    // (B: Bind angle texture)
+    glActiveTexture(GL_TEXTURE1);
+    glBindTexture(GL_TEXTURE_2D, GlobalGLRenderer.AngleTexture);
+    glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, InternalWidth, InternalHeight,
+                    GL_RGBA, GL_UNSIGNED_INT_8_8_8_8, GlobalGLRenderer.Angles);
+    
+
     glBindVertexArray(GlobalGLRenderer.FrameVAO);
     glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
+    
   }
   {/* Rain Pass */}
   {
@@ -775,8 +880,6 @@ internal void Win64DisplayBufferInWindow(HDC DeviceContext, int WindowWidth, int
     CheckGLError("After rain draw");
   }
 
-  
-  
   // CheckGLError("After draw");
   
   SwapBuffers(DeviceContext);
