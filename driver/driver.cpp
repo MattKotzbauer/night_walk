@@ -708,7 +708,7 @@ internal void InitGlobalGLRendering(){
 				  1.0f, .8f, .6f, 1.0f, 100.0f
 				  );
         GlobalLightingSystem.AddLight(InternalWidth / 4.0f, InternalHeight / 3.0f,
-				  1.0f, .8f, .6f, 1.0f, 100.0f
+				  1.0f, .8f, .6f, 1.0f, 200.0f
 				  );
   }
 
@@ -1155,7 +1155,6 @@ int WINAPI WinMain(HINSTANCE Instance,
   
   return 0;
 }
-
 
 
 

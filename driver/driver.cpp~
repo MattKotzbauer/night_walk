@@ -707,7 +707,13 @@ internal void InitGlobalGLRendering(){
     GlobalLightingSystem.AddLight(InternalWidth / 2.0f, InternalHeight / 2.0f,
 				  1.0f, .8f, .6f, 1.0f, 100.0f
 				  );
+<<<<<<< Updated upstream
+        GlobalLightingSystem.AddLight(InternalWidth / 4.0f, InternalHeight / 3.0f,
+				  1.0f, .8f, .6f, 1.0f, 100.0f
+				  );
+=======
     
+>>>>>>> Stashed changes
   }
 
   {/* 2: Base Scene Setup */ }
@@ -848,13 +854,26 @@ internal void Win64DisplayBufferInWindow(HDC DeviceContext, int WindowWidth, int
 
     // THIS IS THE LINE
     GlobalLightingSystem.UpdateLightUniforms(GlobalGLRenderer.BaseShader);
+<<<<<<< Updated upstream
+
+    // (A: Bind main texture)
+=======
     
+>>>>>>> Stashed changes
     glActiveTexture(GL_TEXTURE0);
     glBindTexture(GL_TEXTURE_2D, GlobalGLRenderer.MainTexture);
     glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, InternalWidth, InternalHeight,
                     GL_RGBA, GL_UNSIGNED_INT_8_8_8_8, GlobalGLRenderer.Pixels);
+    // (B: Bind angle texture)
+    glActiveTexture(GL_TEXTURE1);
+    glBindTexture(GL_TEXTURE_2D, GlobalGLRenderer.AngleTexture);
+    glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, InternalWidth, InternalHeight,
+                    GL_RGBA, GL_UNSIGNED_INT_8_8_8_8, GlobalGLRenderer.Angles);
+    
+
     glBindVertexArray(GlobalGLRenderer.FrameVAO);
     glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
+    
   }
   {/* Rain Pass */}
   {
@@ -869,8 +888,6 @@ internal void Win64DisplayBufferInWindow(HDC DeviceContext, int WindowWidth, int
     CheckGLError("After rain draw");
   }
 
-  
-  
   // CheckGLError("After draw");
   
   SwapBuffers(DeviceContext);

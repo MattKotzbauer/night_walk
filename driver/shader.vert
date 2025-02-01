@@ -1,4 +1,4 @@
-// (Vertex Shader)
+// shader.vert (Vertex Shader)
 
 #version 330 core
 
