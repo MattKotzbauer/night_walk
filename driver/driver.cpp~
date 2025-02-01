@@ -1,3 +1,4 @@
+
 // INCLUDES / DEFINES
 
 #include <windows.h> // (base windows functionality)
@@ -707,13 +708,9 @@ internal void InitGlobalGLRendering(){
     GlobalLightingSystem.AddLight(InternalWidth / 2.0f, InternalHeight / 2.0f,
 				  1.0f, .8f, .6f, 1.0f, 100.0f
 				  );
-<<<<<<< Updated upstream
         GlobalLightingSystem.AddLight(InternalWidth / 4.0f, InternalHeight / 3.0f,
-				  1.0f, .8f, .6f, 1.0f, 100.0f
+				  1.0f, .8f, .6f, 1.0f, 200.0f
 				  );
-=======
-    
->>>>>>> Stashed changes
   }
 
   {/* 2: Base Scene Setup */ }
@@ -854,12 +851,8 @@ internal void Win64DisplayBufferInWindow(HDC DeviceContext, int WindowWidth, int
 
     // THIS IS THE LINE
     GlobalLightingSystem.UpdateLightUniforms(GlobalGLRenderer.BaseShader);
-<<<<<<< Updated upstream
 
     // (A: Bind main texture)
-=======
-    
->>>>>>> Stashed changes
     glActiveTexture(GL_TEXTURE0);
     glBindTexture(GL_TEXTURE_2D, GlobalGLRenderer.MainTexture);
     glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, InternalWidth, InternalHeight,
@@ -1163,7 +1156,6 @@ int WINAPI WinMain(HINSTANCE Instance,
   
   return 0;
 }
-
 
 
 

@@ -1,3 +1,5 @@
+// shader.frag (Fragment Shader)
+
 out vec4 FragColor;
 
 in vec2 TexCoord;
@@ -21,6 +23,15 @@ uniform float ambientStrength;
 void main(){
   // Get base color and angle from textures
   vec4 baseColor = texture(gameTexture, TexCoord);
+  vec4 angleData = texture(angleTexture, TexCoord);
+
+  /* 
+  // TEMP debugging code
+  if(angleData.a == 0u){
+    FragColor = baseColor;
+    return;
+    } */
+  
   uint surfaceAngleRaw = texture(angleTexture, TexCoord).r + texture(angleTexture, TexCoord).g;
 
   // Convert stored angle to direction vector

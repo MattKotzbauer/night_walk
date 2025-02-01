@@ -1,3 +1,4 @@
+
 // INCLUDES / DEFINES
 
 #include <windows.h> // (base windows functionality)
@@ -708,7 +709,7 @@ internal void InitGlobalGLRendering(){
 				  1.0f, .8f, .6f, 1.0f, 100.0f
 				  );
         GlobalLightingSystem.AddLight(InternalWidth / 4.0f, InternalHeight / 3.0f,
-				  1.0f, .8f, .6f, 1.0f, 200.0f
+				  1.0f, .8f, .6f, 15.0f, 200.0f
 				  );
   }
 
@@ -811,6 +812,8 @@ internal void InitGlobalGLRendering(){
   glEnable(GL_BLEND);
   glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 
+  CheckGLError("After init global GL");
+
   // GlobalRainSystem.Init();
 
   // blue blit (TODO: replace with game screen blit)
@@ -848,7 +851,6 @@ internal void Win64DisplayBufferInWindow(HDC DeviceContext, int WindowWidth, int
   {
     GlobalGLRenderer.BaseShader->Use();
 
-    // THIS IS THE LINE
     GlobalLightingSystem.UpdateLightUniforms(GlobalGLRenderer.BaseShader);
 
     // (A: Bind main texture)
@@ -1004,7 +1006,8 @@ int WINAPI WinMain(HINSTANCE Instance,
 	  GlobalGameMap.Width = GameMapWidth;
 	  GlobalGameMap.XOffset = 0;
 	  GlobalGameMap.PriorXOffset = 0;
-	  LoadImageToGameMap(&GlobalGameMap, "../media/Scene1.png");
+	  LoadGameMap(&GlobalGameMap, "../media/Scene1.png");
+	  LoadNormalMap(&GlobalGameMap, "../media/NormalMap1.png");
 	  LoadSpriteMap(&GlobalSpriteMap, "../media/Anim1.png");
 
 	  // LoadInternalMap();

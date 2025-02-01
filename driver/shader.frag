@@ -1,12 +1,14 @@
 // shader.frag (Fragment Shader)
 
+#version 330 core
+
 out vec4 FragColor;
 
 in vec2 TexCoord;
 in vec2 FragPos;
 
 uniform sampler2D gameTexture;
-uniform usampler2D angleTexture;
+uniform sampler2D angleTexture;
 
 struct Light{
   vec2 position;
@@ -25,17 +27,16 @@ void main(){
   vec4 baseColor = texture(gameTexture, TexCoord);
   vec4 angleData = texture(angleTexture, TexCoord);
 
-  /* 
   // TEMP debugging code
   if(angleData.a == 0u){
     FragColor = baseColor;
     return;
-    } */
-  
-  uint surfaceAngleRaw = texture(angleTexture, TexCoord).r + texture(angleTexture, TexCoord).g;
+  }
+
+    float surfaceAngleRaw = (angleData.r + angleData.g) * 255.0;
 
   // Convert stored angle to direction vector
-  float angleRadians = radians(float(surfaceAngleRaw));
+  float angleRadians = radians(surfaceAngleRaw);
   vec2 surfaceNormal = vec2(cos(angleRadians), sin(angleRadians));
 
   // Start with ambient light
