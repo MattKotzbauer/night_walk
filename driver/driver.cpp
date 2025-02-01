@@ -89,14 +89,20 @@ int32 Direction; // (is it reversed?)
 }
  */
 struct player_state{
-  int32 AnimState = 0; // 0 = idle, 1 = walk
+  // General State: 
+  int32 AnimState = 0; // 0 = Idle, 1 = Walk
+  bool32 PlayerReversed = false;
 
-  // (Walk animation metadata)
+  // Animation Metadata: 
+  int32 AnimFrame = 0; // Sprite within animation
+  int32 AnimInter = 0; // Interval frame within current sprite panel
+  int32 MaxAnimInter = 3; // Number of interval frames per sprite panel
+
+  // (Animation Tags:)
   int32 WalkStart = 1;
   int32 WalkEnd = 5;
-  int32 WalkDirection = 1;
+  int32 WalkDirection = 1; // (Status within ping-pong animation)
 
-  bool32 PlayerReversed = false;  
 };
 global_variable player_state GlobalPlayerState;
 
@@ -424,7 +430,7 @@ global_variable const real32 TARGET_SECONDS_PER_FRAME = (1.0f / (real32)TARGET_F
 
 // (Scroll speed)
 global_variable const real32 SCROLL_SPEED = 1.0f;
-global_variable real32 ScrollOffset = 0;
+global_variable real32 GlobalScrollOffset = 0;
 
 // HELPER FUNCTIONS
 
@@ -450,19 +456,102 @@ internal void ProcessGameInput(game_input* NewInput, game_input* OldInput){
 
   // OutputDebugStringA(NewInput->Left.EndedDown ? "Left key DOWN\n" : "Left key UP\n");
   // NewInput->Right.EndedDown = true;
-  
+
+  // Handle conflicting input:
+  if(NewInput->Left.EndedDown && NewInput->Right.EndedDown){
+    if(OldInput->Right.EndedDown && !OldInput->Left.EndedDown){
+      // Prioritize new left input
+      NewInput->Right.EndedDown = false; 
+    }
+    else{
+      NewInput->Left.EndedDown = false;
+    }
+    {
+    /* if(OldInput->Left.EndedDown && !OldInput->Right.EndedDown){
+      // Prioritize new right input
+      NewInput->Left.EndedDown = false;
+    }
+    else if(OldInput->RightEndedDown && !OldInput.LeftEndedDown){
+      // Prioritize new left input
+      NewInput->Right.EndedDown = false; 
+      } */
+    }
+  }
+
+  // Animation State Handling: 
+  if(GlobalPlayerState.AnimState == 0){
+    // Prior State: Idle
+
+    if(NewInput->Left.EndedDown || NewInput->Right.EndedDown){
+      GlobalPlayerState.AnimState = 1; // (Anim State: Walking)
+      GlobalPlayerState.AnimFrame = GlobalPlayerState.WalkStart;
+    }
+    else{ /* (Remain Idle) */}
+
+  }
+  else if(GlobalPlayerState.AnimState == 1){
+    // Prior State: Walking
+
+    if(NewInput->Left.EndedDown || NewInput->Right.EndedDown){
+      
+      GlobalPlayerState.AnimInter++;
+
+      if(GlobalPlayerState.AnimInter == GlobalPlayerState.MaxAnimInter){
+	GlobalPlayerState.AnimInter = 0;
+	GlobalPlayerState.AnimFrame += GlobalPlayerState.WalkDirection;
+
+	// (Change walk direction if we reach an animation bound)
+	if(GlobalPlayerState.AnimFrame == GlobalPlayerState.WalkStart){ GlobalPlayerState.WalkDirection = 1; }
+	else if(GlobalPlayerState.AnimFrame == GlobalPlayerState.WalkEnd){ GlobalPlayerState.WalkDirection = -1; }
+      }
+    }
+    else{
+      // Reset animation metadata
+      GlobalPlayerState.AnimState = 0; // (Anim State: Idle)
+      GlobalPlayerState.AnimFrame = 0; // (Idle Frame)
+      // (Reset walking-specific metadata:)
+      GlobalPlayerState.AnimInter = 0;
+      GlobalPlayerState.WalkDirection = 1;
+    }
+  }
+
+  // Irrespective Handling
   if(NewInput->Left.EndedDown){
-    // ScrollOffset = max(0, ScrollOffset - SCROLL_SPEED)
-    ScrollOffset = (ScrollOffset - SCROLL_SPEED > 0) ? ScrollOffset - SCROLL_SPEED : 0;
-    GlobalGameMap.XOffset = (int32)ScrollOffset;
+    // GlobalScrollOffset = max(0, GlobalScrollOffset - SCROLL_SPEED)
+    GlobalScrollOffset = (GlobalScrollOffset - SCROLL_SPEED > 0) ? GlobalScrollOffset - SCROLL_SPEED : 0;
+    GlobalGameMap.XOffset = (int32)GlobalScrollOffset;
     if(!GlobalPlayerState.PlayerReversed){GlobalPlayerState.PlayerReversed = true;}
   }
+  
   if(NewInput->Right.EndedDown){
-    // ScrollOffset = min(ScrollOffset + SCROLL_SPEED, GlobalGameMap.Width)
-    ScrollOffset = (ScrollOffset + SCROLL_SPEED < GlobalGameMap.Width) ? ScrollOffset + SCROLL_SPEED : GlobalGameMap.Width;
-    GlobalGameMap.XOffset = (int32)ScrollOffset;
+    // GlobalScrollOffset = min(GlobalScrollOffset + SCROLL_SPEED, GlobalGameMap.Width)
+    GlobalScrollOffset = (GlobalScrollOffset + SCROLL_SPEED < GlobalGameMap.Width) ? GlobalScrollOffset + SCROLL_SPEED : GlobalGameMap.Width;
+    GlobalGameMap.XOffset = (int32)GlobalScrollOffset;
+    
     if(GlobalPlayerState.PlayerReversed){GlobalPlayerState.PlayerReversed = false;}
   }
+      
+  
+  /* 
+  if(NewInput->Left.EndedDown){
+     // GlobalScrollOffset = max(0, GlobalScrollOffset - SCROLL_SPEED)
+    GlobalScrollOffset = (GlobalScrollOffset - SCROLL_SPEED > 0) ? GlobalScrollOffset - SCROLL_SPEED : 0;
+    GlobalGameMap.XOffset = (int32)GlobalScrollOffset;
+    if(!GlobalPlayerState.PlayerReversed){GlobalPlayerState.PlayerReversed = true;}
+  }
+  else if(NewInput->Right.EndedDown){
+    // GlobalScrollOffset = min(GlobalScrollOffset + SCROLL_SPEED, GlobalGameMap.Width)
+    GlobalScrollOffset = (GlobalScrollOffset + SCROLL_SPEED < GlobalGameMap.Width) ? GlobalScrollOffset + SCROLL_SPEED : GlobalGameMap.Width;
+    GlobalGameMap.XOffset = (int32)GlobalScrollOffset;
+    if(GlobalPlayerState.PlayerReversed){GlobalPlayerState.PlayerReversed = false;}
+  }
+  else{
+    // No Input
+    // (Reset any animation factors)
+    GlobalPlayerState.AnimState = 0;
+    GlobalPlayerState.AnimFrame = 0;
+  }
+  */
 }
 
 // (Gets Current Window Dimensions)
@@ -632,7 +721,7 @@ internal void LoadInternalMap(){
   int PlayerWidthTEMP = 15;
 
   // (dictates frame of animation)
-  int SpriteIndex = 4;
+  int SpriteIndex = GlobalPlayerState.AnimFrame;
 
   int SpriteStartY = (SpriteIndex / SpritePitch) * SpriteHeight;
   int SpriteStartX = (SpriteIndex % SpritePitch) * SpriteWidth;
@@ -650,11 +739,12 @@ internal void LoadInternalMap(){
 	// int DstIndex = OX((PlayerBottomOffset + i), (PlayerLeftOffset + j));
 	// int DstIndex = OX(InternalHeight - (PlayerBottomOffset - SpriteHeight) - i, (PlayerLeftOffset + j));
 	int DstIndex;
-	if(GlobalPlayerState.PlayerReversed){
+	if(!GlobalPlayerState.PlayerReversed){ // Forward
 	  DstIndex = OX(((PlayerBottomOffset + SpriteHeight) - i), (PlayerLeftOffset + j));
 	}
-	else{
-	  DstIndex = OX(((PlayerBottomOffset + SpriteHeight) - i), (PlayerLeftOffset + j));
+	else{ // Reversed
+	  DstIndex = OX(((PlayerBottomOffset + SpriteHeight) - i), ((PlayerLeftOffset + SpriteWidth) - j));
+	  // DstIndex = OX(((PlayerBottomOffset + SpriteHeight) - i), (PlayerLeftOffset + j));
 	}
 	
 	// TODO: test opacity value of pixel
