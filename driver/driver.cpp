@@ -658,7 +658,8 @@ internal void LoadInternalMap(){
 	}
 	
 	// TODO: test opacity value of pixel
-	GlobalGLRenderer.Pixels[DstIndex] = GlobalSpriteMap.Pixels[SrcIndex];
+	if((GlobalGLRenderer.Angles[DstIndex] & 0XFF) != 253){
+	GlobalGLRenderer.Pixels[DstIndex] = GlobalSpriteMap.Pixels[SrcIndex]; }
 	
       }
     }

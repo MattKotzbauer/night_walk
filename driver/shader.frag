@@ -27,7 +27,7 @@ void main(){
   vec4 baseColor = texture(gameTexture, TexCoord);
   vec4 angleData = texture(angleTexture, TexCoord);
 
-  if(angleData.a == 0u){ FragColor = baseColor; return; }  
+  if(angleData.a == 0u || angleData.a == 253u || angleData.a == 254u){ FragColor = baseColor; return; }  
   // FragColor = angleData;
   // return;
   
