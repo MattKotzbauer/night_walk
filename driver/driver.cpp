@@ -709,7 +709,7 @@ internal void InitGlobalGLRendering(){
 				  1.0f, .8f, .6f, 1.0f, 100.0f
 				  );
         GlobalLightingSystem.AddLight(InternalWidth / 4.0f, InternalHeight / 3.0f,
-				  1.0f, .8f, .6f, 15.0f, 200.0f
+				  1.0f, .8f, .6f, 5.0f, 200.0f
 				  );
   }
 
@@ -825,7 +825,7 @@ internal void InitGlobalGLRendering(){
 // (OpenGL-Based Screen Blitting)
 internal void Win64DisplayBufferInWindow(HDC DeviceContext, int WindowWidth, int WindowHeight, win64_offscreen_buffer *Buffer){
 
-  real32 TargetAspectRatio = (real32)InternalWidth / (real32)InternalHeight;
+      real32 TargetAspectRatio = (real32)InternalWidth / (real32)InternalHeight;
   real32 WindowAspectRatio = (real32)WindowWidth / (real32)WindowHeight;
 
   int32 ViewportX = 0;

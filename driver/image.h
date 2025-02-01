@@ -64,9 +64,16 @@ internal void LoadNormalMap(game_map* GameMap, char* Filename){
 	  int SrcIndex = (i * Width + j) * 4;
 	  int DstIndex = IX(i,j);
 
+	  /* 
 	  uint32 CurrentAngle =
 	    (ValueBuffer[SrcIndex + 0]) + // Red
 	    (ValueBuffer[SrcIndex + 1]); // Green
+	  */
+	  // (We'll conver to angle in OpenGL)
+	  uint32 CurrentAngle =
+	    (ValueBuffer[SrcIndex + 0] << 24) | // Red
+	    (ValueBuffer[SrcIndex + 1] << 16) | // Green
+	    (ValueBuffer[SrcIndex + 3]); // Alpha 
 	  
 	  GameMap->Angles[DstIndex] = CurrentAngle;
 	}}

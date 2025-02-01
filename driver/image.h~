@@ -4,7 +4,7 @@
 
 // base ver
 
-internal void LoadImageToGameMap(game_map* GameMap, char* Filename){
+internal void LoadGameMap(game_map* GameMap, char* Filename){
   int Width, Height, Channels;
   
   unsigned char* PixelBuffer = stbi_load(Filename, &Width, &Height, &Channels, 4);

@@ -28,13 +28,21 @@ void main(){
   vec4 angleData = texture(angleTexture, TexCoord);
 
   // TEMP debugging code
-  if(angleData.a == 0u){
-    FragColor = baseColor;
-    return;
-  }
+  // if(angleData.a == 0u){
+    // FragColor = baseColor;
+    // FragColor = vec4(0.0, 0.0, 0.0, 0.0);
+    // return;  }
 
-    float surfaceAngleRaw = (angleData.r + angleData.g) * 255.0;
+  float surfaceAngleRaw = (angleData.r + angleData.g) * 255.0;
+    // float surfaceAngleRaw = (angleData.r + angleData.g) * 255.0;
+    // DEBUG: Map angle 0-360 to red channel 0-1
+    // FragColor = vec4(surfaceAngleRaw/360.0, 0.0, 0.0, 1.0);
+    // return;
 
+  // FragColor = angleData;
+  // FragColor = vec4(angleData.r, angleData.g, 0.0, 1.0);
+  // return;
+    
   // Convert stored angle to direction vector
   float angleRadians = radians(surfaceAngleRaw);
   vec2 surfaceNormal = vec2(cos(angleRadians), sin(angleRadians));
