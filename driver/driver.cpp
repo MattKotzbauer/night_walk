@@ -220,14 +220,14 @@ struct game_button_state {
 };
 struct game_input {  
   union{
-    game_button_state Buttons[6];
+    game_button_state Buttons[2];
     struct{
-      game_button_state Up;
-      game_button_state Down;
+      // game_button_state Up;
+      // game_button_state Down;
       game_button_state Left;
       game_button_state Right;
-      game_button_state LeftShoulder;
-      game_button_state RightShoulder;
+      // game_button_state LeftShoulder;
+      // game_button_state RightShoulder;
     };
   };
   
@@ -328,12 +328,13 @@ struct rain_system {
 		 GL_RED, GL_UNSIGNED_BYTE, texData);
     
 }
-  
-  void Init(){
+
+  // TODO: Rename ('initsystem')
+  void InitSystem(){
     //ActiveCount = MAX_RAINDROPS / 2;
-    ActiveCount = 900;
+    ActiveCount = .9 * MAX_RAINDROPS;
     for(int i = 0; i < ActiveCount; ++i){
-      Reset(GameRaindrops[i]);
+      InitDrop(GameRaindrops[i]);
     }
     UpdateInstanceData();
   }
@@ -380,9 +381,9 @@ struct rain_system {
   }
 
   void Reset(game_raindrop& Drop){
-    // (When drop is either (A) unitialized or (B) reaches bottom of screen)
+    // (When drop reaches bottom of screen)
 
-    // (set random posX (any pixel within viewport))
+    // TODO: improve randomization to be more even (currently skews towards right)
     real32 x = (real32)(rand() % (InternalHeight + InternalWidth + 20));
     Drop.PosX = x > (InternalWidth + 10) ? (InternalWidth + 10) : x;
     Drop.PosY = x > (InternalWidth + 10) ?  x - (InternalWidth + 10) : (InternalHeight + 10);
@@ -392,16 +393,28 @@ struct rain_system {
     
     // (set random angle: (4 - 4.5 radians))
     // Drop.Angle = 4.0f + (0.5f * ((real32)rand() / RAND_MAX));
+    // Drop.Angle = 3.14;
+    
     Drop.Angle = 3.5f + (0.5f * ((real32)rand() / RAND_MAX));
     
     // (set random velocity: (3 - 5))
-    Drop.Velocity = 3.0f + (2.0f * ((real32)rand() / RAND_MAX));
-
+    // Drop.Velocity = 3.5f + (2.0f * ((real32)rand() / RAND_MAX));
+    Drop.Velocity = 4.5f + (2.0f * ((real32)rand() / RAND_MAX));
+    
     // (size, active)
     Drop.Size = 1.0f + ((real32)rand() / RAND_MAX); // TODO: can size be uniform?
     Drop.Active = true;
+  }
 
+  void InitDrop(game_raindrop& Drop){
+    // (When drop is uninialized)
+    Drop.PosX = (real32)(rand() % InternalWidth);
+    Drop.PosY = (real32)(rand() % InternalHeight);
     
+    Drop.Angle = 3.5f + (0.5f * ((real32)rand() / RAND_MAX));
+    Drop.Velocity = 3.5f + (2.0f * ((real32)rand() / RAND_MAX));
+    Drop.Size = 1.0f + ((real32)rand() / RAND_MAX); 
+    Drop.Active = true;    
   }
   
 };
@@ -535,9 +548,6 @@ internal void ProcessGameInput(game_input* NewInput, game_input* OldInput){
 	0 : GlobalGameMap.XOffset - GlobalPlayerState.MovementSpeed;     
     }
       
-    // analogue: GlobalScrollOffset = max(0, GlobalScrollOffset - SCROLL_SPEED)
-    // GlobalScrollOffset = (GlobalScrollOffset - SCROLL_SPEED > 0) ? GlobalScrollOffset - SCROLL_SPEED : 0;
-    // GlobalGameMap.XOffset = (int32)GlobalScrollOffset;
     if(!GlobalPlayerState.PlayerReversed){GlobalPlayerState.PlayerReversed = true;}
   }
   
@@ -895,7 +905,7 @@ internal void InitGlobalGLRendering(){
   {/* 3: Rain Scene Setup */}
   {
     GlobalRainSystem.InitGL();
-    GlobalRainSystem.Init();
+    GlobalRainSystem.InitSystem();
   }
 
   {/* 4: Texture Setup */}
@@ -957,7 +967,7 @@ internal void InitGlobalGLRendering(){
 
   CheckGLError("After init global GL");
 
-  // GlobalRainSystem.Init();
+  // GlobalRainSystem.InitSystem();
 
   // blue blit (TODO: replace with game screen blit)
   // for(int i = 0; i < InternalHeight; ++i){for(int j = 0; j < InternalWidth; ++j){ GlobalGLRenderer.Pixels[IX(i,j)] = Alpha|Blue; }}
