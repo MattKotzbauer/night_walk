@@ -29,7 +29,6 @@ typedef double real64;
 
 typedef int32_t bool32;
 
-
 // (Used in particle structs)
 // (Resolution Width, Height)
 global_variable const uint32 InternalWidth = 320;
@@ -63,7 +62,6 @@ struct game_map{
   uint32* Angles; // (Angles provided by normal map)
   int32 Width;
   // (Height = InternalHeight)
-  int32 PriorXOffset;
   int32 XOffset;
   // int32 PlayerOffset; // (dictates where we draw sprite)
 };
@@ -96,13 +94,17 @@ struct player_state{
   // Animation Metadata: 
   int32 AnimFrame = 0; // Sprite within animation
   int32 AnimInter = 0; // Interval frame within current sprite panel
-  int32 MaxAnimInter = 3; // Number of interval frames per sprite panel
+  int32 MaxAnimInter = 6; // Number of interval frames per sprite panel
 
   // (Animation Tags:)
   int32 WalkStart = 1;
   int32 WalkEnd = 5;
   int32 WalkDirection = 1; // (Status within ping-pong animation)
 
+  int32 MovementSpeed = 1; // TODO: add floating point precision?
+  int32 LocalXOffset = 25;
+  int32 XOffset = 10;
+  
 };
 global_variable player_state GlobalPlayerState;
 
@@ -429,7 +431,7 @@ global_variable const int TARGET_FPS = 30;
 global_variable const real32 TARGET_SECONDS_PER_FRAME = (1.0f / (real32)TARGET_FPS);
 
 // (Scroll speed)
-global_variable const real32 SCROLL_SPEED = 1.0f;
+// global_variable const real32 SCROLL_SPEED = 1.0f;
 global_variable real32 GlobalScrollOffset = 0;
 
 // HELPER FUNCTIONS
@@ -515,18 +517,52 @@ internal void ProcessGameInput(game_input* NewInput, game_input* OldInput){
     }
   }
 
-  // Irrespective Handling
+  // Irrespective Handling: Player Movement
   if(NewInput->Left.EndedDown){
-    // GlobalScrollOffset = max(0, GlobalScrollOffset - SCROLL_SPEED)
-    GlobalScrollOffset = (GlobalScrollOffset - SCROLL_SPEED > 0) ? GlobalScrollOffset - SCROLL_SPEED : 0;
-    GlobalGameMap.XOffset = (int32)GlobalScrollOffset;
+    if(GlobalGameMap.XOffset == 0){ // Leftmost region
+      // GlobalPlayerState.XOffset = max(GlobalPlayerState.XOffset - GlobalPlayerState.MovementSpeed, 0)
+      GlobalPlayerState.XOffset = GlobalPlayerState.XOffset - GlobalPlayerState.MovementSpeed < 0 ?
+	0 : GlobalPlayerState.XOffset - GlobalPlayerState.MovementSpeed;
+    }
+    else if(GlobalGameMap.XOffset == (GlobalGameMap.Width - InternalWidth) && GlobalPlayerState.XOffset > GlobalPlayerState.LocalXOffset){ // Rightmost region
+      // GlobalPlayerState.XOffset = max(GlobalPlayerState.XOffset - GlobalPlayerState.MovementSpeed, GlobalPlayerState.LocalXOffset)
+      GlobalPlayerState.XOffset = GlobalPlayerState.XOffset - GlobalPlayerState.MovementSpeed < GlobalPlayerState.LocalXOffset ?
+	GlobalPlayerState.LocalXOffset : GlobalPlayerState.XOffset - GlobalPlayerState.MovementSpeed;
+    }
+    else{
+      // GlobalGameMap.XOffset = max(GlobalGameMap.XOffset - GlobalPlayerState.MovementSpeed, 0)
+      GlobalGameMap.XOffset = GlobalGameMap.XOffset - GlobalPlayerState.MovementSpeed < 0 ?
+	0 : GlobalGameMap.XOffset - GlobalPlayerState.MovementSpeed;     
+    }
+      
+    // analogue: GlobalScrollOffset = max(0, GlobalScrollOffset - SCROLL_SPEED)
+    // GlobalScrollOffset = (GlobalScrollOffset - SCROLL_SPEED > 0) ? GlobalScrollOffset - SCROLL_SPEED : 0;
+    // GlobalGameMap.XOffset = (int32)GlobalScrollOffset;
     if(!GlobalPlayerState.PlayerReversed){GlobalPlayerState.PlayerReversed = true;}
   }
   
   if(NewInput->Right.EndedDown){
-    // GlobalScrollOffset = min(GlobalScrollOffset + SCROLL_SPEED, GlobalGameMap.Width)
-    GlobalScrollOffset = (GlobalScrollOffset + SCROLL_SPEED < GlobalGameMap.Width) ? GlobalScrollOffset + SCROLL_SPEED : GlobalGameMap.Width;
-    GlobalGameMap.XOffset = (int32)GlobalScrollOffset;
+
+    if(GlobalPlayerState.XOffset < GlobalPlayerState.LocalXOffset){
+      // (Move player within left region)
+      // GlobalPlayerState.XOffset = min(GlobalPlayerState.LocalXOffset, GlobalPlayerState.XOffset + GlobalPlayerState.MovementSpeed)
+      GlobalPlayerState.XOffset = GlobalPlayerState.XOffset + GlobalPlayerState.MovementSpeed > GlobalPlayerState.LocalXOffset ?
+	GlobalPlayerState.LocalXOffset : GlobalPlayerState.XOffset + GlobalPlayerState.MovementSpeed;
+    }
+    else if(GlobalGameMap.XOffset == (GlobalGameMap.Width - InternalWidth)){
+      // (Move player within right region)
+      // GlobalPlayerState.XOffset = min(GlobalPlayerState.XOffset + SCROLL_SPEED, (InternalWidth - SpriteWidth))
+      int32 AdjustedWidth = InternalWidth - SpriteWidth;
+      GlobalPlayerState.XOffset = GlobalPlayerState.XOffset + GlobalPlayerState.MovementSpeed > AdjustedWidth ?
+	AdjustedWidth : GlobalPlayerState.XOffset + GlobalPlayerState.MovementSpeed;
+    }
+    else{
+      // Move screen
+      // GlobalGameMap.XOffset = min(GlobalGameMap.XOffset + GlobalPlayerState.MovementSpeed, FullWidth - InternalWidth)
+      GlobalGameMap.XOffset = GlobalGameMap.XOffset + GlobalPlayerState.MovementSpeed > (FullWidth - InternalWidth) ?
+	(FullWidth - InternalWidth) : GlobalGameMap.XOffset + GlobalPlayerState.MovementSpeed;
+      
+    }
     
     if(GlobalPlayerState.PlayerReversed){GlobalPlayerState.PlayerReversed = false;}
   }
@@ -715,17 +751,17 @@ internal void LoadInternalMap(){
   
   // 2: Player Sprite (Row-Major):
   int PlayerBottomOffset = 27;
-  int PlayerLeftOffset = 20;
+  // int PlayerLeftOffset = 20;
 
-  int PlayerHeightTEMP = 20;
-  int PlayerWidthTEMP = 15;
+  // int PlayerHeightTEMP = 20;
+  // int PlayerWidthTEMP = 15;
 
   // (dictates frame of animation)
   int SpriteIndex = GlobalPlayerState.AnimFrame;
-
+  
   int SpriteStartY = (SpriteIndex / SpritePitch) * SpriteHeight;
   int SpriteStartX = (SpriteIndex % SpritePitch) * SpriteWidth;
-
+  
   // TODO: if normal map index is 0, we consider it foreground
   
   for(int i = 0; i < SpriteHeight; ++i){
@@ -740,10 +776,10 @@ internal void LoadInternalMap(){
 	// int DstIndex = OX(InternalHeight - (PlayerBottomOffset - SpriteHeight) - i, (PlayerLeftOffset + j));
 	int DstIndex;
 	if(!GlobalPlayerState.PlayerReversed){ // Forward
-	  DstIndex = OX(((PlayerBottomOffset + SpriteHeight) - i), (PlayerLeftOffset + j));
+	  DstIndex = OX(((PlayerBottomOffset + SpriteHeight) - i), (GlobalPlayerState.XOffset + j));
 	}
 	else{ // Reversed
-	  DstIndex = OX(((PlayerBottomOffset + SpriteHeight) - i), ((PlayerLeftOffset + SpriteWidth) - j));
+	  DstIndex = OX(((PlayerBottomOffset + SpriteHeight) - i), ((GlobalPlayerState.XOffset + SpriteWidth) - j));
 	  // DstIndex = OX(((PlayerBottomOffset + SpriteHeight) - i), (PlayerLeftOffset + j));
 	}
 	
@@ -1112,7 +1148,6 @@ int WINAPI WinMain(HINSTANCE Instance,
 	  // (Image loading / game map population)
 	  GlobalGameMap.Width = GameMapWidth;
 	  GlobalGameMap.XOffset = 0;
-	  GlobalGameMap.PriorXOffset = 0;
 	  LoadGameMap(&GlobalGameMap, "../media/Scene1.png");
 	  LoadNormalMap(&GlobalGameMap, "../media/NormalMap1.png");
 	  LoadSpriteMap(&GlobalSpriteMap, "../media/Anim1.png");
@@ -1138,7 +1173,6 @@ int WINAPI WinMain(HINSTANCE Instance,
 	      // GlobalGameMap.PriorXOffset = GlobalGameMap.XOffset;
 	    // }
 	    LoadInternalMap();
-	    GlobalGameMap.PriorXOffset = GlobalGameMap.XOffset;
 	 
 	    MSG Message;
 	    
