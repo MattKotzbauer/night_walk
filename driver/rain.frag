@@ -9,15 +9,15 @@ out vec4 FragColor;
 uniform sampler2D rainTexture;
 
 void main() {
-    // Basic raindrop color
-    // (Alpha is last element in vec4, end alpha may be more like .5-.6, their recommendation is .6)
-    vec4 baseColor = vec4(0.8, 0.8, 0.9, 1);
+    // (Primarily-white color)
+    vec4 baseColor = vec4(0.8, 0.8, 0.9, .7);
     
-    // Sample the raindrop texture
+    // (Sample raindrop texture)
     float alpha = texture(rainTexture, TexCoord).r;
 
     float lifetimeFade = 1.0 * (4.0 * (1.0 - VerticalFade) * VerticalFade);
-    // (Optional: velocity-based motion-blur)
+
+    // (Prior method: velocity-based motion-blur)
     // float motionBlur = length(Velocity) * 0.01;
     // alpha *= 1.0 + motionBlur;
 

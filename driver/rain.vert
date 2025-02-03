@@ -15,6 +15,16 @@ void main() {
     vec2 stretchPos = aPos * vec2(1, stretch);
     vec2 pos = stretchPos + aOffset;
 
+    
+    // ROTATION START
+    float angle = atan(aVelocity.x, -aVelocity.y) * 1.1;
+    float c = cos(angle);
+    float s = sin(angle);
+    mat2 rotation = mat2(c, -s, s, c);
+    vec2 rPos = rotation * stretchPos;
+    pos = rPos + aOffset;
+    // ROTATION END
+    
     // Convert from pixel coordinates to OpenGL coordinates (-1 to 1)
     vec2 normalizedPos = vec2(
         (pos.x / 320.0) * 2.0 - 1.0,  // (Using InternalWidth)
@@ -22,7 +32,6 @@ void main() {
     );
 
     VerticalFade = aOffset.y / 180.0; // (Using InternalHeight)
-    
     gl_Position = vec4(normalizedPos, 0.0, 1.0);
     TexCoord = aTexCoord;
     Velocity = aVelocity;

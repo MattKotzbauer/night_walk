@@ -104,6 +104,7 @@ struct player_state{
   int32 MovementSpeed = 1; // TODO: add floating point precision?
   int32 LocalXOffset = 25;
   int32 XOffset = 10;
+  int32 BottomOffset = 27;
   
 };
 global_variable player_state GlobalPlayerState;
@@ -157,6 +158,25 @@ struct lighting_system{
     Lights[idx].Intensity = Intensity;
     Lights[idx].Radius = Radius;
     Lights[idx].Active = true;
+  }
+
+  void ClearLight(Shader* LightShader, int32 Index){
+    if(Index < 0 || Index >= ActiveLightCount) { return; }
+    if(Lights[Index].Active){
+    Lights[Index].Active = false;
+    // (Zero out values in shader)
+    char buf[64];
+    sprintf(buf, "lights[%d].position", Index);
+    LightShader->SetVec2(buf, 0.0f, 0.0f);
+    sprintf(buf, "lights[%d].color", Index);
+    LightShader->SetVec3(buf, 0.0f, 0.0f, 0.0f);
+    sprintf(buf, "lights[%d].intensity", Index);
+    LightShader->SetFloat(buf, 0.0f);
+    sprintf(buf, "lights[%d].radius", Index);
+    LightShader->SetFloat(buf, 0.0f);
+
+    ActiveLightCount--;
+    }
   }
   
   void UpdateLightUniforms(Shader* LightShader){
@@ -395,7 +415,8 @@ struct rain_system {
     // Drop.Angle = 4.0f + (0.5f * ((real32)rand() / RAND_MAX));
     // Drop.Angle = 3.14;
     
-    Drop.Angle = 3.5f + (0.5f * ((real32)rand() / RAND_MAX));
+    // Drop.Angle = 3.5f + (0.5f * ((real32)rand() / RAND_MAX));
+    Drop.Angle = 3.5f;
     
     // (set random velocity: (3 - 5))
     // Drop.Velocity = 3.5f + (2.0f * ((real32)rand() / RAND_MAX));
@@ -411,8 +432,9 @@ struct rain_system {
     Drop.PosX = (real32)(rand() % InternalWidth);
     Drop.PosY = (real32)(rand() % InternalHeight);
     
-    Drop.Angle = 3.5f + (0.5f * ((real32)rand() / RAND_MAX));
-    Drop.Velocity = 3.5f + (2.0f * ((real32)rand() / RAND_MAX));
+    // Drop.Angle = 3.5f + (0.5f * ((real32)rand() / RAND_MAX));
+    Drop.Angle = 3.5f;
+    Drop.Velocity = 4.5f + (2.0f * ((real32)rand() / RAND_MAX));
     Drop.Size = 1.0f + ((real32)rand() / RAND_MAX); 
     Drop.Active = true;    
   }
@@ -468,7 +490,7 @@ internal void ProcessGameInput(game_input* NewInput, game_input* OldInput){
 
   NewInput->Left.EndedDown = (GetAsyncKeyState(VK_LEFT) & 0x8000) != 0;
   NewInput->Right.EndedDown = (GetAsyncKeyState(VK_RIGHT) & 0x8000) != 0;
-
+   
   // OutputDebugStringA(NewInput->Left.EndedDown ? "Left key DOWN\n" : "Left key UP\n");
   // NewInput->Right.EndedDown = true;
 
@@ -752,19 +774,10 @@ internal void LoadInternalMap(){
       int MapJ = j + GlobalGameMap.XOffset;
       if(MapJ >= 0 && MapJ < GlobalGameMap.Width){
 	int SrcIndex = IX(i,MapJ);
-	// int DstIndex = ((InternalHeight - i) * InternalWidth) + (j);
-	int DstIndex = OX((InternalHeight - i), j);
+	int DstIndex = OX((InternalHeight - i), j); // DstIndex = ((InternalHeight - i) * InternalWidth) + (j)
 	GlobalGLRenderer.Pixels[DstIndex] = GlobalGameMap.Pixels[SrcIndex];
 	GlobalGLRenderer.Angles[DstIndex] = GlobalGameMap.Angles[SrcIndex];
-	// TODO: if alpha channel of GlobalGLRenderer.Angles[DstIndex] = 254, add light in pixel position
     }}}
-  
-  // 2: Player Sprite (Row-Major):
-  int PlayerBottomOffset = 27;
-  // int PlayerLeftOffset = 20;
-
-  // int PlayerHeightTEMP = 20;
-  // int PlayerWidthTEMP = 15;
 
   // (dictates frame of animation)
   int SpriteIndex = GlobalPlayerState.AnimFrame;
@@ -772,28 +785,21 @@ internal void LoadInternalMap(){
   int SpriteStartY = (SpriteIndex / SpritePitch) * SpriteHeight;
   int SpriteStartX = (SpriteIndex % SpritePitch) * SpriteWidth;
   
-  // TODO: if normal map index is 0, we consider it foreground
-  
   for(int i = 0; i < SpriteHeight; ++i){
     for(int j = 0; j < SpriteWidth; ++j){
-      // TODO: (fix logic on this)
-      // int DstIndex = OX(i,j);      int SrcIndex = (() * Sprite )
       
       int SrcIndex = ((SpriteStartY + i) * SpriteMapWidth) + (SpriteStartX + j);
       if(GlobalSpriteMap.Pixels[SrcIndex] & Alpha != 0){
-	// int DstIndex = OX((InternalHeight - (PlayerBottomOffset + i)), (PlayerLeftOffset + j));
-	// int DstIndex = OX((PlayerBottomOffset + i), (PlayerLeftOffset + j));
-	// int DstIndex = OX(InternalHeight - (PlayerBottomOffset - SpriteHeight) - i, (PlayerLeftOffset + j));
+
 	int DstIndex;
 	if(!GlobalPlayerState.PlayerReversed){ // Forward
-	  DstIndex = OX(((PlayerBottomOffset + SpriteHeight) - i), (GlobalPlayerState.XOffset + j));
+	  DstIndex = OX(((GlobalPlayerState.BottomOffset + SpriteHeight) - i), (GlobalPlayerState.XOffset + j));
 	}
 	else{ // Reversed
-	  DstIndex = OX(((PlayerBottomOffset + SpriteHeight) - i), ((GlobalPlayerState.XOffset + SpriteWidth) - j));
-	  // DstIndex = OX(((PlayerBottomOffset + SpriteHeight) - i), (PlayerLeftOffset + j));
+	  DstIndex = OX(((GlobalPlayerState.BottomOffset + SpriteHeight) - i), ((GlobalPlayerState.XOffset + SpriteWidth) - j));
 	}
-	
-	// TODO: test opacity value of pixel
+
+	// Foreground (opacity 253 within normal map)
 	if((GlobalGLRenderer.Angles[DstIndex] & 0XFF) != 253){
 	GlobalGLRenderer.Pixels[DstIndex] = GlobalSpriteMap.Pixels[SrcIndex]; }
 	

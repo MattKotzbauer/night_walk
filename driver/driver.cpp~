@@ -29,7 +29,6 @@ typedef double real64;
 
 typedef int32_t bool32;
 
-
 // (Used in particle structs)
 // (Resolution Width, Height)
 global_variable const uint32 InternalWidth = 320;
@@ -63,7 +62,6 @@ struct game_map{
   uint32* Angles; // (Angles provided by normal map)
   int32 Width;
   // (Height = InternalHeight)
-  int32 PriorXOffset;
   int32 XOffset;
   // int32 PlayerOffset; // (dictates where we draw sprite)
 };
@@ -89,14 +87,25 @@ int32 Direction; // (is it reversed?)
 }
  */
 struct player_state{
-  int32 AnimState = 0; // 0 = idle, 1 = walk
+  // General State: 
+  int32 AnimState = 0; // 0 = Idle, 1 = Walk
+  bool32 PlayerReversed = false;
 
-  // (Walk animation metadata)
+  // Animation Metadata: 
+  int32 AnimFrame = 0; // Sprite within animation
+  int32 AnimInter = 0; // Interval frame within current sprite panel
+  int32 MaxAnimInter = 6; // Number of interval frames per sprite panel
+
+  // (Animation Tags:)
   int32 WalkStart = 1;
   int32 WalkEnd = 5;
-  int32 WalkDirection = 1;
+  int32 WalkDirection = 1; // (Status within ping-pong animation)
 
-  bool32 PlayerReversed = false;  
+  int32 MovementSpeed = 1; // TODO: add floating point precision?
+  int32 LocalXOffset = 25;
+  int32 XOffset = 10;
+  int32 BottomOffset = 27;
+  
 };
 global_variable player_state GlobalPlayerState;
 
@@ -149,6 +158,25 @@ struct lighting_system{
     Lights[idx].Intensity = Intensity;
     Lights[idx].Radius = Radius;
     Lights[idx].Active = true;
+  }
+
+  void ClearLight(Shader* LightShader, int32 Index{
+    if(Index < 0 || Index >= ActiveLightCount) { return; }
+    if(Lights[Index].Active){
+    Lights[Index].Active = false;
+    // (Zero out values in shader)
+    char buf[64];
+    sprintf(buf, "lights[%d].position", Index);
+    LightShader->SetVec2(buf, 0.0f, 0.0f);
+    sprintf(buf, "lights[%d].color", Index);
+    LightShader->SetVec3(buf, 0.0f, 0.0f, 0.0f);
+    sprintf(buf, "lights[%d].intensity", Index);
+    LightShader->SetFloat(buf, 0.0f);
+    sprintf(buf, "lights[%d].radius", Index);
+    LightShader->SetFloat(buf, 0.0f);
+
+    ActiveLightCount--;
+    )    
   }
   
   void UpdateLightUniforms(Shader* LightShader){
@@ -212,14 +240,14 @@ struct game_button_state {
 };
 struct game_input {  
   union{
-    game_button_state Buttons[6];
+    game_button_state Buttons[2];
     struct{
-      game_button_state Up;
-      game_button_state Down;
+      // game_button_state Up;
+      // game_button_state Down;
       game_button_state Left;
       game_button_state Right;
-      game_button_state LeftShoulder;
-      game_button_state RightShoulder;
+      // game_button_state LeftShoulder;
+      // game_button_state RightShoulder;
     };
   };
   
@@ -320,12 +348,13 @@ struct rain_system {
 		 GL_RED, GL_UNSIGNED_BYTE, texData);
     
 }
-  
-  void Init(){
+
+  // TODO: Rename ('initsystem')
+  void InitSystem(){
     //ActiveCount = MAX_RAINDROPS / 2;
-    ActiveCount = 900;
+    ActiveCount = .9 * MAX_RAINDROPS;
     for(int i = 0; i < ActiveCount; ++i){
-      Reset(GameRaindrops[i]);
+      InitDrop(GameRaindrops[i]);
     }
     UpdateInstanceData();
   }
@@ -372,9 +401,9 @@ struct rain_system {
   }
 
   void Reset(game_raindrop& Drop){
-    // (When drop is either (A) unitialized or (B) reaches bottom of screen)
+    // (When drop reaches bottom of screen)
 
-    // (set random posX (any pixel within viewport))
+    // TODO: improve randomization to be more even (currently skews towards right)
     real32 x = (real32)(rand() % (InternalHeight + InternalWidth + 20));
     Drop.PosX = x > (InternalWidth + 10) ? (InternalWidth + 10) : x;
     Drop.PosY = x > (InternalWidth + 10) ?  x - (InternalWidth + 10) : (InternalHeight + 10);
@@ -384,16 +413,30 @@ struct rain_system {
     
     // (set random angle: (4 - 4.5 radians))
     // Drop.Angle = 4.0f + (0.5f * ((real32)rand() / RAND_MAX));
-    Drop.Angle = 3.5f + (0.5f * ((real32)rand() / RAND_MAX));
+    // Drop.Angle = 3.14;
+    
+    // Drop.Angle = 3.5f + (0.5f * ((real32)rand() / RAND_MAX));
+    Drop.Angle = 3.5f;
     
     // (set random velocity: (3 - 5))
-    Drop.Velocity = 3.0f + (2.0f * ((real32)rand() / RAND_MAX));
-
+    // Drop.Velocity = 3.5f + (2.0f * ((real32)rand() / RAND_MAX));
+    Drop.Velocity = 4.5f + (2.0f * ((real32)rand() / RAND_MAX));
+    
     // (size, active)
     Drop.Size = 1.0f + ((real32)rand() / RAND_MAX); // TODO: can size be uniform?
     Drop.Active = true;
+  }
 
+  void InitDrop(game_raindrop& Drop){
+    // (When drop is uninialized)
+    Drop.PosX = (real32)(rand() % InternalWidth);
+    Drop.PosY = (real32)(rand() % InternalHeight);
     
+    // Drop.Angle = 3.5f + (0.5f * ((real32)rand() / RAND_MAX));
+    Drop.Angle = 3.5f;
+    Drop.Velocity = 4.5f + (2.0f * ((real32)rand() / RAND_MAX));
+    Drop.Size = 1.0f + ((real32)rand() / RAND_MAX); 
+    Drop.Active = true;    
   }
   
 };
@@ -423,8 +466,8 @@ global_variable const int TARGET_FPS = 30;
 global_variable const real32 TARGET_SECONDS_PER_FRAME = (1.0f / (real32)TARGET_FPS);
 
 // (Scroll speed)
-global_variable const real32 SCROLL_SPEED = 1.0f;
-global_variable real32 ScrollOffset = 0;
+// global_variable const real32 SCROLL_SPEED = 1.0f;
+global_variable real32 GlobalScrollOffset = 0;
 
 // HELPER FUNCTIONS
 
@@ -447,22 +490,136 @@ internal void ProcessGameInput(game_input* NewInput, game_input* OldInput){
 
   NewInput->Left.EndedDown = (GetAsyncKeyState(VK_LEFT) & 0x8000) != 0;
   NewInput->Right.EndedDown = (GetAsyncKeyState(VK_RIGHT) & 0x8000) != 0;
-
+   
   // OutputDebugStringA(NewInput->Left.EndedDown ? "Left key DOWN\n" : "Left key UP\n");
   // NewInput->Right.EndedDown = true;
-  
+
+  // Handle conflicting input:
+  if(NewInput->Left.EndedDown && NewInput->Right.EndedDown){
+    if(OldInput->Right.EndedDown && !OldInput->Left.EndedDown){
+      // Prioritize new left input
+      NewInput->Right.EndedDown = false; 
+    }
+    else{
+      NewInput->Left.EndedDown = false;
+    }
+    {
+    /* if(OldInput->Left.EndedDown && !OldInput->Right.EndedDown){
+      // Prioritize new right input
+      NewInput->Left.EndedDown = false;
+    }
+    else if(OldInput->RightEndedDown && !OldInput.LeftEndedDown){
+      // Prioritize new left input
+      NewInput->Right.EndedDown = false; 
+      } */
+    }
+  }
+
+  // Animation State Handling: 
+  if(GlobalPlayerState.AnimState == 0){
+    // Prior State: Idle
+
+    if(NewInput->Left.EndedDown || NewInput->Right.EndedDown){
+      GlobalPlayerState.AnimState = 1; // (Anim State: Walking)
+      GlobalPlayerState.AnimFrame = GlobalPlayerState.WalkStart;
+    }
+    else{ /* (Remain Idle) */}
+
+  }
+  else if(GlobalPlayerState.AnimState == 1){
+    // Prior State: Walking
+
+    if(NewInput->Left.EndedDown || NewInput->Right.EndedDown){
+      
+      GlobalPlayerState.AnimInter++;
+
+      if(GlobalPlayerState.AnimInter == GlobalPlayerState.MaxAnimInter){
+	GlobalPlayerState.AnimInter = 0;
+	GlobalPlayerState.AnimFrame += GlobalPlayerState.WalkDirection;
+
+	// (Change walk direction if we reach an animation bound)
+	if(GlobalPlayerState.AnimFrame == GlobalPlayerState.WalkStart){ GlobalPlayerState.WalkDirection = 1; }
+	else if(GlobalPlayerState.AnimFrame == GlobalPlayerState.WalkEnd){ GlobalPlayerState.WalkDirection = -1; }
+      }
+    }
+    else{
+      // Reset animation metadata
+      GlobalPlayerState.AnimState = 0; // (Anim State: Idle)
+      GlobalPlayerState.AnimFrame = 0; // (Idle Frame)
+      // (Reset walking-specific metadata:)
+      GlobalPlayerState.AnimInter = 0;
+      GlobalPlayerState.WalkDirection = 1;
+    }
+  }
+
+  // Irrespective Handling: Player Movement
   if(NewInput->Left.EndedDown){
-    // ScrollOffset = max(0, ScrollOffset - SCROLL_SPEED)
-    ScrollOffset = (ScrollOffset - SCROLL_SPEED > 0) ? ScrollOffset - SCROLL_SPEED : 0;
-    GlobalGameMap.XOffset = (int32)ScrollOffset;
+    if(GlobalGameMap.XOffset == 0){ // Leftmost region
+      // GlobalPlayerState.XOffset = max(GlobalPlayerState.XOffset - GlobalPlayerState.MovementSpeed, 0)
+      GlobalPlayerState.XOffset = GlobalPlayerState.XOffset - GlobalPlayerState.MovementSpeed < 0 ?
+	0 : GlobalPlayerState.XOffset - GlobalPlayerState.MovementSpeed;
+    }
+    else if(GlobalGameMap.XOffset == (GlobalGameMap.Width - InternalWidth) && GlobalPlayerState.XOffset > GlobalPlayerState.LocalXOffset){ // Rightmost region
+      // GlobalPlayerState.XOffset = max(GlobalPlayerState.XOffset - GlobalPlayerState.MovementSpeed, GlobalPlayerState.LocalXOffset)
+      GlobalPlayerState.XOffset = GlobalPlayerState.XOffset - GlobalPlayerState.MovementSpeed < GlobalPlayerState.LocalXOffset ?
+	GlobalPlayerState.LocalXOffset : GlobalPlayerState.XOffset - GlobalPlayerState.MovementSpeed;
+    }
+    else{
+      // GlobalGameMap.XOffset = max(GlobalGameMap.XOffset - GlobalPlayerState.MovementSpeed, 0)
+      GlobalGameMap.XOffset = GlobalGameMap.XOffset - GlobalPlayerState.MovementSpeed < 0 ?
+	0 : GlobalGameMap.XOffset - GlobalPlayerState.MovementSpeed;     
+    }
+      
     if(!GlobalPlayerState.PlayerReversed){GlobalPlayerState.PlayerReversed = true;}
   }
+  
   if(NewInput->Right.EndedDown){
-    // ScrollOffset = min(ScrollOffset + SCROLL_SPEED, GlobalGameMap.Width)
-    ScrollOffset = (ScrollOffset + SCROLL_SPEED < GlobalGameMap.Width) ? ScrollOffset + SCROLL_SPEED : GlobalGameMap.Width;
-    GlobalGameMap.XOffset = (int32)ScrollOffset;
+
+    if(GlobalPlayerState.XOffset < GlobalPlayerState.LocalXOffset){
+      // (Move player within left region)
+      // GlobalPlayerState.XOffset = min(GlobalPlayerState.LocalXOffset, GlobalPlayerState.XOffset + GlobalPlayerState.MovementSpeed)
+      GlobalPlayerState.XOffset = GlobalPlayerState.XOffset + GlobalPlayerState.MovementSpeed > GlobalPlayerState.LocalXOffset ?
+	GlobalPlayerState.LocalXOffset : GlobalPlayerState.XOffset + GlobalPlayerState.MovementSpeed;
+    }
+    else if(GlobalGameMap.XOffset == (GlobalGameMap.Width - InternalWidth)){
+      // (Move player within right region)
+      // GlobalPlayerState.XOffset = min(GlobalPlayerState.XOffset + SCROLL_SPEED, (InternalWidth - SpriteWidth))
+      int32 AdjustedWidth = InternalWidth - SpriteWidth;
+      GlobalPlayerState.XOffset = GlobalPlayerState.XOffset + GlobalPlayerState.MovementSpeed > AdjustedWidth ?
+	AdjustedWidth : GlobalPlayerState.XOffset + GlobalPlayerState.MovementSpeed;
+    }
+    else{
+      // Move screen
+      // GlobalGameMap.XOffset = min(GlobalGameMap.XOffset + GlobalPlayerState.MovementSpeed, FullWidth - InternalWidth)
+      GlobalGameMap.XOffset = GlobalGameMap.XOffset + GlobalPlayerState.MovementSpeed > (FullWidth - InternalWidth) ?
+	(FullWidth - InternalWidth) : GlobalGameMap.XOffset + GlobalPlayerState.MovementSpeed;
+      
+    }
+    
     if(GlobalPlayerState.PlayerReversed){GlobalPlayerState.PlayerReversed = false;}
   }
+      
+  
+  /* 
+  if(NewInput->Left.EndedDown){
+     // GlobalScrollOffset = max(0, GlobalScrollOffset - SCROLL_SPEED)
+    GlobalScrollOffset = (GlobalScrollOffset - SCROLL_SPEED > 0) ? GlobalScrollOffset - SCROLL_SPEED : 0;
+    GlobalGameMap.XOffset = (int32)GlobalScrollOffset;
+    if(!GlobalPlayerState.PlayerReversed){GlobalPlayerState.PlayerReversed = true;}
+  }
+  else if(NewInput->Right.EndedDown){
+    // GlobalScrollOffset = min(GlobalScrollOffset + SCROLL_SPEED, GlobalGameMap.Width)
+    GlobalScrollOffset = (GlobalScrollOffset + SCROLL_SPEED < GlobalGameMap.Width) ? GlobalScrollOffset + SCROLL_SPEED : GlobalGameMap.Width;
+    GlobalGameMap.XOffset = (int32)GlobalScrollOffset;
+    if(GlobalPlayerState.PlayerReversed){GlobalPlayerState.PlayerReversed = false;}
+  }
+  else{
+    // No Input
+    // (Reset any animation factors)
+    GlobalPlayerState.AnimState = 0;
+    GlobalPlayerState.AnimFrame = 0;
+  }
+  */
 }
 
 // (Gets Current Window Dimensions)
@@ -591,58 +748,60 @@ internal void Win64ResizeDIBSection(win64_offscreen_buffer *Buffer, int Width, i
   
 }
 
+internal void LoadLights(){
+  for(int i = 0; i < InternalHeight; ++i){
+    for(int j = 0; j < InternalWidth; ++j){
+      int TrIndex = OX((InternalHeight - i), j);
+      if((GlobalGLRenderer.Angles[TrIndex] & 0xFF) == 254){
+	  OutputDebugStringA("Trying to add light \n\n\n");
+	  // (add light)
+	  real32 ScreenX = (real32)j;
+	  real32 ScreenY = (real32)(InternalHeight - i);
+	  GlobalLightingSystem.AddLight(ScreenX, ScreenY,
+					1.0f, 0.8f, 0.6f, /* (R, G, B) */
+					1.0f, 100.0f /* (Intensity, Radius) */
+					); // TODO: encode more info into the normal map? e.g. intensity, radius	
+      }
+    }
+  }
+}
+
 // (Load game map into GlobalGLRenderer.Pixels)
-internal void LoadInternalMap(int PriorXOffset){
+internal void LoadInternalMap(){
   // 1: Game Map (Column-Major): 
   for(int i = 0; i < InternalHeight; ++i){
     for(int j = 0; j < InternalWidth; ++j){
       int MapJ = j + GlobalGameMap.XOffset;
       if(MapJ >= 0 && MapJ < GlobalGameMap.Width){
 	int SrcIndex = IX(i,MapJ);
-	// int DstIndex = ((InternalHeight - i) * InternalWidth) + (j);
-	int DstIndex = OX((InternalHeight - i), j);
+	int DstIndex = OX((InternalHeight - i), j); // DstIndex = ((InternalHeight - i) * InternalWidth) + (j)
 	GlobalGLRenderer.Pixels[DstIndex] = GlobalGameMap.Pixels[SrcIndex];
 	GlobalGLRenderer.Angles[DstIndex] = GlobalGameMap.Angles[SrcIndex];
     }}}
-  
-  // 2: Player Sprite (Row-Major):
-  int PlayerBottomOffset = 27;
-  int PlayerLeftOffset = 20;
-
-  // int PlayerHeightTEMP = 15;
-  // int PlayerWidthTEMP = 10;
-
-  int PlayerHeightTEMP = 20;
-  int PlayerWidthTEMP = 15;
 
   // (dictates frame of animation)
-  int SpriteIndex = 4;
-
+  int SpriteIndex = GlobalPlayerState.AnimFrame;
+  
   int SpriteStartY = (SpriteIndex / SpritePitch) * SpriteHeight;
   int SpriteStartX = (SpriteIndex % SpritePitch) * SpriteWidth;
-  // int32 PlayerBase = SpritePosition(0); // (should return 0)
-
   
   for(int i = 0; i < SpriteHeight; ++i){
     for(int j = 0; j < SpriteWidth; ++j){
-      // TODO: (fix logic on this)
-      // int DstIndex = OX(i,j);      int SrcIndex = (() * Sprite )
       
       int SrcIndex = ((SpriteStartY + i) * SpriteMapWidth) + (SpriteStartX + j);
       if(GlobalSpriteMap.Pixels[SrcIndex] & Alpha != 0){
-	// int DstIndex = OX((InternalHeight - (PlayerBottomOffset + i)), (PlayerLeftOffset + j));
-	// int DstIndex = OX((PlayerBottomOffset + i), (PlayerLeftOffset + j));
-	// int DstIndex = OX(InternalHeight - (PlayerBottomOffset - SpriteHeight) - i, (PlayerLeftOffset + j));
+
 	int DstIndex;
-	if(GlobalPlayerState.PlayerReversed){
-	  DstIndex = OX(((PlayerBottomOffset + SpriteHeight) - i), (PlayerLeftOffset + j));
+	if(!GlobalPlayerState.PlayerReversed){ // Forward
+	  DstIndex = OX(((GlobalPlayerState.BottomOffset + SpriteHeight) - i), (GlobalPlayerState.XOffset + j));
 	}
-	else{
-	  DstIndex = OX(((PlayerBottomOffset + SpriteHeight) - i), (PlayerLeftOffset + j));
+	else{ // Reversed
+	  DstIndex = OX(((GlobalPlayerState.BottomOffset + SpriteHeight) - i), ((GlobalPlayerState.XOffset + SpriteWidth) - j));
 	}
-	
-	// TODO: test opacity value of pixel
-	GlobalGLRenderer.Pixels[DstIndex] = GlobalSpriteMap.Pixels[SrcIndex];
+
+	// Foreground (opacity 253 within normal map)
+	if((GlobalGLRenderer.Angles[DstIndex] & 0XFF) != 253){
+	GlobalGLRenderer.Pixels[DstIndex] = GlobalSpriteMap.Pixels[SrcIndex]; }
 	
       }
     }
@@ -652,7 +811,6 @@ internal void LoadInternalMap(int PriorXOffset){
 
 // (OpenGL Windows Initialization)
 internal void Win64InitOpenGL(HWND Window, HDC WindowDC){
-
   // HDC WindowDC = GetDC(Window); 
   
   PIXELFORMATDESCRIPTOR DesiredPixelFormat = {};
@@ -704,13 +862,14 @@ internal void InitGlobalGLRendering(){
     GlobalGLRenderer.RainShader = new Shader("../driver/rain.vert", "../driver/rain.frag");
 
     // CURR TEST:
-    GlobalLightingSystem.ActiveLightCount = 0;    
+    GlobalLightingSystem.ActiveLightCount = 0;
+    /* 
     GlobalLightingSystem.AddLight(InternalWidth / 2.0f, InternalHeight / 2.0f,
 				  1.0f, .8f, .6f, 1.0f, 100.0f
 				  );
         GlobalLightingSystem.AddLight(InternalWidth / 4.0f, InternalHeight / 3.0f,
 				  1.0f, .8f, .6f, 5.0f, 200.0f
-				  );
+				  ); */
   }
 
   {/* 2: Base Scene Setup */ }
@@ -752,7 +911,7 @@ internal void InitGlobalGLRendering(){
   {/* 3: Rain Scene Setup */}
   {
     GlobalRainSystem.InitGL();
-    GlobalRainSystem.Init();
+    GlobalRainSystem.InitSystem();
   }
 
   {/* 4: Texture Setup */}
@@ -814,7 +973,7 @@ internal void InitGlobalGLRendering(){
 
   CheckGLError("After init global GL");
 
-  // GlobalRainSystem.Init();
+  // GlobalRainSystem.InitSystem();
 
   // blue blit (TODO: replace with game screen blit)
   // for(int i = 0; i < InternalHeight; ++i){for(int j = 0; j < InternalWidth; ++j){ GlobalGLRenderer.Pixels[IX(i,j)] = Alpha|Blue; }}
@@ -825,7 +984,7 @@ internal void InitGlobalGLRendering(){
 // (OpenGL-Based Screen Blitting)
 internal void Win64DisplayBufferInWindow(HDC DeviceContext, int WindowWidth, int WindowHeight, win64_offscreen_buffer *Buffer){
 
-      real32 TargetAspectRatio = (real32)InternalWidth / (real32)InternalHeight;
+  real32 TargetAspectRatio = (real32)InternalWidth / (real32)InternalHeight;
   real32 WindowAspectRatio = (real32)WindowWidth / (real32)WindowHeight;
 
   int32 ViewportX = 0;
@@ -1005,12 +1164,12 @@ int WINAPI WinMain(HINSTANCE Instance,
 	  // (Image loading / game map population)
 	  GlobalGameMap.Width = GameMapWidth;
 	  GlobalGameMap.XOffset = 0;
-	  GlobalGameMap.PriorXOffset = 0;
 	  LoadGameMap(&GlobalGameMap, "../media/Scene1.png");
 	  LoadNormalMap(&GlobalGameMap, "../media/NormalMap1.png");
 	  LoadSpriteMap(&GlobalSpriteMap, "../media/Anim1.png");
 
-	  // LoadInternalMap();
+	  LoadInternalMap();
+	  LoadLights();
 	  
 	  game_input Input[2] = {};
 	  game_input* NewInput = &Input[0];
@@ -1029,8 +1188,7 @@ int WINAPI WinMain(HINSTANCE Instance,
 	      // LoadInternalMap();
 	      // GlobalGameMap.PriorXOffset = GlobalGameMap.XOffset;
 	    // }
-	    LoadInternalMap(GlobalGameMap.PriorXOffset);
-	    GlobalGameMap.PriorXOffset = GlobalGameMap.XOffset;
+	    LoadInternalMap();
 	 
 	    MSG Message;
 	    
