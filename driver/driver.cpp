@@ -774,7 +774,8 @@ internal void Win64ResizeDIBSection(win64_offscreen_buffer *Buffer, int Width, i
 internal void LoadLights(){
   for(int i = 0; i < InternalHeight; ++i){
     for(int j = 0; j < InternalWidth; ++j){
-      int TrIndex = OX((InternalHeight - i), j);
+      int AdjX = j + GlobalGameMap.XOffset;
+      int TrIndex = OX((InternalHeight - i), AdjX);
       if((GlobalGLRenderer.Angles[TrIndex] & 0xFF) == 254){
 	  OutputDebugStringA("Trying to add light \n\n\n");
 	  // (add light)
@@ -807,7 +808,8 @@ internal void LoadInternalMap(){
   
   int SpriteStartY = (SpriteIndex / SpritePitch) * SpriteHeight;
   int SpriteStartX = (SpriteIndex % SpritePitch) * SpriteWidth;
-  
+
+  // Sprite Rendering
   for(int i = 0; i < SpriteHeight; ++i){
     for(int j = 0; j < SpriteWidth; ++j){
       
