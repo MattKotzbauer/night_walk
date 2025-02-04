@@ -202,6 +202,29 @@ struct lighting_system{
     LightShader->SetFloat("ambientStrength", 0.2f);
     
   }
+
+  void MoveLightShader(Shader* LightShader, int32 XOffset){
+    // move all light shaders
+    // TODO: set player light to 0th index and have this be i. Then can have a separate fn for player x offset which we want to update every frame
+    // TODO: refine logic
+
+    for(int i = 0; i < ActiveLightCount; ++i){
+      if(!Lights[i].Active){
+	continue;
+      }
+      
+      if(Lights[i].PosX - GlobalGameMap.XOffset < -100 || Lights[i].PosX - GlobalGameMap.XOffset > 420){
+	// TODO: (fix indexing logic?)
+	ClearLight(LightShader, i);
+      }
+      
+      char buf[64];
+      sprintf(buf, "lights[%d].position", i);
+      LightShader->SetVec2(buf, Lights[i].PosX, Lights[i].PosY);
+      
+    }
+  }
+    
 };
 global_variable lighting_system GlobalLightingSystem;
 
@@ -468,7 +491,7 @@ global_variable const real32 TARGET_SECONDS_PER_FRAME = (1.0f / (real32)TARGET_F
 // (Scroll speed)
 // global_variable const real32 SCROLL_SPEED = 1.0f;
 global_variable real32 GlobalScrollOffset = 0;
-x
+
 // HELPER FUNCTIONS
 
 // (OpenGL Error Checking))
@@ -759,7 +782,7 @@ internal void LoadLights(){
 	  real32 ScreenY = (real32)(InternalHeight - i);
 	  GlobalLightingSystem.AddLight(ScreenX, ScreenY,
 					1.0f, 0.8f, 0.6f, /* (R, G, B) */
-					1.0f, 100.0f /* (Intensity, Radius) */
+					2.0f, 100.0f /* (Intensity, Radius) */
 					); // TODO: encode more info into the normal map? e.g. intensity, radius	
       }
     }
@@ -784,7 +807,8 @@ internal void LoadInternalMap(){
   
   int SpriteStartY = (SpriteIndex / SpritePitch) * SpriteHeight;
   int SpriteStartX = (SpriteIndex % SpritePitch) * SpriteWidth;
-  
+
+  // Sprite Rendering
   for(int i = 0; i < SpriteHeight; ++i){
     for(int j = 0; j < SpriteWidth; ++j){
       

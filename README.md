@@ -15,14 +15,11 @@ To give some intuition for this last bullet point: this game's lighting system c
 
 For this, we can specify a normal map across our internal resolution by creating an analogous PNG file that we load alongside the scene itself. For each pixel within our scene that can be lit, we specify an angle on the 360 degree scale and encode it into the R (0 - 255) and G (0 - 105) channels of the normal map:
 
-
-TODO: include normal map screenshot
-![Normal map screenshot](./media/file_name alt="Normal Map File")
-[SCREENSHOT OF scene pixels to normal map demo]
+![Normal map screenshot](./media/Normal_Map_Intuition.png)
 
 We can then have these surfaces' angle of interaction dictate the effects of our in-game light sources: for each pixel, we take the cosine between its normalized displacement vector from the light and the normal vector that we specified in our initial encoding. This tells us the degree to which the surfaces face each other: and we can then make computations with respect to other metadata (e.g. color, distance, intensity) to determine the influence of the light source on the pixel's final colors.
 
-Because we specify these effects in our shaders, they have sub-pixel detail: while the normal map regions are specified to the pixel, the precision of the light affecting them is constrained by the PC resolution itself. The runtime per pixel is upper-bounded by our maximum number of light sources (8), and the only time our GPU code branches is in the case of an unspecified normal map (e.g. rendering the pixel color as-is). As this is the biggest computation cost, the game can comfortably operate at 60FPS.
+Because we specify these effects in our shaders, they have sub-pixel detail: while the normal map regions are specified to the pixel, the precision of the light affecting them is constrained by the PC resolution itself. The runtime per pixel is upper-bounded by our maximum number of light sources (8), and the only time our GPU code branches is in the case of an unspecified normal map (e.g. rendering the pixel color as-is). As this is the biggest computation cost, the game can operate comfortably at 60FPS.
 
 **Project Todos:**
 - Refactor player system
